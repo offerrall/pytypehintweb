@@ -1,5 +1,7 @@
 # pytypehintweb
 
+Python schemas in. Portable form plans and browser widgets out.
+
 `pytypehintweb` is a framework-free browser form layer for
 [`pytypehint`](https://github.com/offerrall/pytypehint). It converts compiled
 Python type schemas into self-contained, JSON-serializable form plans and
