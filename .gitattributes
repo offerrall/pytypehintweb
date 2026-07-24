@@ -1,0 +1,8 @@
+# The browser runtime ships inside the Python package and is served as-is, so
+# its bytes are part of what users download and what the size budget measures.
+# Pinning LF keeps that measurement identical on Windows, Linux and macOS,
+# whatever core.autocrlf a checkout happens to use: with CRLF the same files
+# gain a byte per line and the totals drift by several KB without a line of
+# code changing.
+*.js text eol=lf
+*.css text eol=lf

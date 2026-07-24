@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python (mypy + suite)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      # Node is on PATH so the star round-trip Python tests actually run
+      # instead of skipping (they shell out to node; see tests/python/conftest.py).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      # test extra = pytest + mypy; demo extra = fastapi + uvicorn, which
+      # test_demo.py imports at collection time. The runtime dep pytypehint>=0.0.6
+      # resolves from PyPI.
+      - run: uv pip install --system -e ".[test,demo]"
+      - run: mypy
+      # pytest runs the whole Python suite, packaging/assets test included.
+      - run: pytest
+
+  javascript:
+    name: JavaScript (suite + size + browser smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The JS suite runs purely in Node against the shipped static modules and
+      # the test fixtures; it needs neither Python nor the installed package.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Covers the JS widgets, the size budget (size.test.mjs) and the plan-doc
+      # examples (documentation.test.mjs).
+      - run: node --test "tests/js/*.test.mjs"
+      # Real-browser smoke against tests/browser/smoke.html, using the Chrome
+      # pre-installed on ubuntu-latest. --no-sandbox is required on the runner.
+      # The page prints "SMOKE: PASS (N checks)" into #result; fail the step
+      # unless that verdict is present.
+      - name: Browser smoke (headless Chrome)
+        run: |
+          google-chrome --headless=new --no-sandbox --disable-gpu \
+            --allow-file-access-from-files --virtual-time-budget=8000 \
+            --dump-dom "file://$PWD/tests/browser/smoke.html" > smoke.out
+          grep -o 'SMOKE: [A-Z]* ([0-9]* checks)' smoke.out | head -1
+          grep -q 'SMOKE: PASS' smoke.out
+
+  packaging:
+    name: Packaging (build + check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      # __version__ is a plain literal, so the build reads it without importing
+      # the package (no pytypehint needed just to build wheel + sdist).
+      - run: uv build
+      - run: uvx twine check dist/*

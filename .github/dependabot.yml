@@ -1,0 +1,10 @@
+version: 2
+
+updates:
+  # Keep the GitHub Actions used by the CI and Publish workflows up to date.
+  # No pip ecosystem: the only runtime dependency is pinned deliberately
+  # (pytypehint>=0.0.6) and the dev extras are managed through pyproject.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

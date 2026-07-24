@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>pytypehintweb browser smoke</title></head>
+<body>
+<!--
+  A tiny real-browser smoke test. The Node suite runs against a fake DOM, so a
+  few behaviours only a real browser has are unchecked there — most importantly
+  that a native control keeps or loses focus, and that a native date/time/range
+  input behaves as claimed. This page exercises those against the actual shipped
+  modules. It adds no dependency and no build step.
+
+  Run headless (Chromium/Chrome), capturing the verdict from the DOM, where
+  $SMOKE_URL is an absolute file:// URL to this page:
+
+    chrome --headless=new --disable-gpu --allow-file-access-from-files \
+      --virtual-time-budget=8000 --dump-dom "$SMOKE_URL" | grep 'id="result"'
+
+  Expect a single line with "SMOKE: PASS (N checks)". A "FAIL" line names the
+  check. Opening the page served over http:// works too; loading it as a file
+  needs the --allow-file-access-from-files flag for the module imports.
+-->
+<div id="host"></div>
+<pre id="out">running…</pre>
+<div id="result">PENDING</div>
+<script type="module">
+const { compileForm } = await import("../../src/pytypehintweb/static/form.js");
+const { expandPlan } = await import("../js/plan-fixture.mjs");
+
+const log = [];
+let failed = 0;
+function check(name, cond) {
+    log.push(`${cond ? "ok  " : "FAIL"}  ${name}`);
+    if (!cond) failed++;
+}
+function threw(fn) { try { fn(); return false; } catch { return true; } }
+
+try {
+    const plan = expandPlan({
+        kind: "form", name: "smoke",
+        fields: [
+            { name: "day", label: "Day", node: { kind: "date" } },
+            { name: "at", label: "At", node: { kind: "time" } },
+            { name: "level", label: "Level",
+              node: { kind: "int", options: { slider: true, min: 0, max: 10, step: 2 } } },
+            { name: "nick", label: "Nick", optional: true, enabled: false,
+              node: { kind: "str" } },
+            { name: "who", label: "Who", node: {
+                kind: "choice", branches: [
+                    { value: "str", mode: "plain", node: { kind: "str" } },
+                    { value: "int", mode: "plain", node: { kind: "int" } },
+                    { value: "flt", mode: "plain", node: { kind: "float" } },
+                ] } },
+            { name: "tags", label: "Tags", node: {
+                kind: "list", item: { kind: "str" } } },
+            { name: "doc", label: "Doc", node: {
+                kind: "file", options: { multiple: true } } },
+        ],
+    });
+
+    const form = compileForm(plan);
+    const host = document.getElementById("host");
+    for (const field of form.fields) host.append(field.widget.el);
+    const by = (n) => form.fields.find((f) => f.name === n).widget;
+
+    // native control types
+    check("date is a native date input", by("day").widget.input.type === "date");
+    check("time is a native time input", by("at").widget.input.type === "time");
+    check("time exposes seconds (step=1)", by("at").widget.input.getAttribute("step") === "1");
+    check("slider is a native range input", by("level").widget.input.type === "range");
+
+    // date / time assignment
+    by("day").widget.setValue("2026-07-22");
+    check("date setValue round-trips", by("day").widget.value() === "2026-07-22");
+    check("date rejects an impossible calendar date",
+          threw(() => by("day").widget.setValue("2026-02-31")));
+    check("date keeps its value after a rejected setValue",
+          by("day").widget.value() === "2026-07-22");
+    by("at").widget.setValue("14:30:05");
+    check("time setValue round-trips", by("at").widget.value() === "14:30:05");
+
+    // integer slider grid
+    const slider = by("level").widget;
+    slider.setValue(4);
+    check("slider accepts an on-grid value", slider.value() === 4);
+    check("slider rejects an off-grid value", threw(() => slider.setValue(3)));
+    check("slider rejects an out-of-range value", threw(() => slider.setValue(12)));
+    check("slider keeps its value after a rejected setValue", slider.value() === 4);
+
+    // optional toggle
+    const nick = by("nick");
+    check("optional starts disabled -> reads null", form.read().nick === null);
+    nick.setEnabled(true);
+    nick.widget.setValue("Ada");
+    check("optional enabled + assigned reads the value", form.read().nick === "Ada");
+
+    // union navigation + focus at the extreme (only a real browser drops focus
+    // from a disabled control, so this is the check the fake DOM cannot make)
+    const who = by("who").widget;
+    check("union starts on branch 0", who.activeIndex() === 0);
+    who.next.focus();
+    who.next.click();
+    check("union moves to branch 1", who.activeIndex() === 1);
+    who.next.click();
+    check("union reaches the last branch", who.activeIndex() === 2);
+    check("next disables itself at the last branch", who.next.disabled === true);
+    check("focus moved off the disabled next to previous",
+          document.activeElement === who.previous);
+    check("focus did NOT fall back to the body",
+          document.activeElement !== document.body);
+
+    // dynamic list
+    const list = by("tags").widget;
+    const before = list.items.length;
+    list.addButton.click();
+    check("list add grows the rows", list.items.length === before + 1);
+    list.items[0].widget.setValue("x");
+    check("list read reflects the row", form.read().tags[0] === "x");
+
+    // file widget accessible name
+    const file = by("doc").widget;
+    check("file add button has a descriptive name",
+          file.addBtn.getAttribute("aria-label") === "Add file");
+
+    // showErrors does not throw and does not alter read()
+    form.showErrors();
+    check("showErrors runs without throwing", true);
+
+    // union plain-branch transport with a real value (active branch is float)
+    who.active().setValue(1.5);
+    check("union plain branch transports the bare value", form.read().who === 1.5);
+
+    // final read shape
+    const out = form.read();
+    check("read returns every field key",
+          ["day", "at", "level", "nick", "who", "tags", "doc"].every((k) => k in out));
+    check("read reports the slider number", out.level === 4);
+
+    document.getElementById("out").textContent = log.join("\n");
+    document.getElementById("result").textContent =
+        failed === 0 ? `SMOKE: PASS (${log.length} checks)` : `SMOKE: FAIL (${failed})`;
+} catch (error) {
+    document.getElementById("out").textContent =
+        log.join("\n") + "\n\nEXCEPTION: " + error.stack;
+    document.getElementById("result").textContent = "SMOKE: FAIL (exception)";
+}
+</script>
+</body>
+</html>

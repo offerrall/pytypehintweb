@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytypehintweb"
+dynamic = ["version"]
+description = "Framework-free browser form layer for pytypehint"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Beltran Offerrall"}]
+requires-python = ">=3.11"
+dependencies = ["pytypehint>=0.0.6"]
+keywords = ["forms", "type-hints", "dataclasses", "schema", "web", "html"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: JavaScript",
+    "Topic :: Software Development :: User Interfaces",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/offerrall/pytypehintweb"
+Repository = "https://github.com/offerrall/pytypehintweb"
+Issues = "https://github.com/offerrall/pytypehintweb/issues"
+
+[project.optional-dependencies]
+demo = [
+    "fastapi",
+    "uvicorn",
+]
+test = [
+    "pytest",
+    "mypy",
+]
+
+[project.scripts]
+pytypehintweb-demo = "pytypehintweb.demo.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "pytypehintweb.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pytypehintweb = ["static/*.js", "static/*.css", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+files = ["src/pytypehintweb"]
+
+# The bundled demo is a showcase application (FastAPI glue and large hand-written
+# example tables), not the typed public API that py.typed vouches for. Consumers
+# import plan_of / decode / WebConfig / the type aliases, all of which type-check
+# clean; the demo stays out of the typed contract.
+[[tool.mypy.overrides]]
+module = "pytypehintweb.demo.*"
+ignore_errors = true

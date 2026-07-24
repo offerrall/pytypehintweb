@@ -1,0 +1,40 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, verify and publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pytypehintweb
+    permissions:
+      # OIDC token for PyPI Trusted Publishing. No API token, no password.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      # Every check below must pass before a single artifact is built, and the
+      # build before anything is published.
+      - run: uv pip install --system -e ".[test,demo]"
+      - run: mypy
+      - run: pytest
+      - run: node --test "tests/js/*.test.mjs"
+      - run: uv build
+      - run: uvx twine check dist/*
+      # Uploads exactly what is in dist/ (the wheel and sdist just built).
+      - uses: pypa/gh-action-pypi-publish@release/v1

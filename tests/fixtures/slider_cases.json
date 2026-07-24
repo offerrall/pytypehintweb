@@ -1,0 +1,119 @@
+[
+  {
+    "name": "zero_crossing_reachable",
+    "minimum": -10,
+    "maximum": 20,
+    "step": 6,
+    "multipleOf": 8,
+    "reachable": true,
+    "first": 8
+  },
+  {
+    "name": "negative_range_reachable",
+    "minimum": -20,
+    "maximum": -4,
+    "step": 2,
+    "multipleOf": 6,
+    "reachable": true,
+    "first": -18
+  },
+  {
+    "name": "zero_crossing_first_is_negative",
+    "minimum": -5,
+    "maximum": 5,
+    "step": 1,
+    "multipleOf": 5,
+    "reachable": true,
+    "first": -5
+  },
+  {
+    "name": "coprime_step_and_multiple",
+    "minimum": 1,
+    "maximum": 100,
+    "step": 7,
+    "multipleOf": 5,
+    "reachable": true,
+    "first": 15
+  },
+  {
+    "name": "non_coprime_step_and_multiple",
+    "minimum": 2,
+    "maximum": 40,
+    "step": 4,
+    "multipleOf": 6,
+    "reachable": true,
+    "first": 6
+  },
+  {
+    "name": "one_valid_point_at_maximum",
+    "minimum": 3,
+    "maximum": 12,
+    "step": 9,
+    "multipleOf": 4,
+    "reachable": true,
+    "first": 12
+  },
+  {
+    "name": "huge_range_valid_only_at_maximum",
+    "minimum": 1,
+    "maximum": 9007199254740991,
+    "step": 1,
+    "multipleOf": 9007199254740991,
+    "reachable": true,
+    "first": 9007199254740991
+  },
+  {
+    "name": "no_solution_coprime",
+    "minimum": 1,
+    "maximum": 9,
+    "step": 4,
+    "multipleOf": 10,
+    "reachable": false,
+    "first": null
+  },
+  {
+    "name": "no_solution_non_coprime",
+    "minimum": 1,
+    "maximum": 20,
+    "step": 4,
+    "multipleOf": 6,
+    "reachable": false,
+    "first": null
+  },
+  {
+    "name": "single_point_range_reachable",
+    "minimum": 6,
+    "maximum": 6,
+    "step": 1,
+    "multipleOf": 3,
+    "reachable": true,
+    "first": 6
+  },
+  {
+    "name": "single_point_range_no_solution",
+    "minimum": 5,
+    "maximum": 5,
+    "step": 1,
+    "multipleOf": 3,
+    "reachable": false,
+    "first": null
+  },
+  {
+    "name": "large_safe_integers_reachable",
+    "minimum": -9007199254740990,
+    "maximum": 9007199254740990,
+    "step": 2,
+    "multipleOf": 1000000,
+    "reachable": true,
+    "first": -9007199254000000
+  },
+  {
+    "name": "single_zero_point",
+    "minimum": 0,
+    "maximum": 0,
+    "step": 1,
+    "multipleOf": 1,
+    "reachable": true,
+    "first": 0
+  }
+]

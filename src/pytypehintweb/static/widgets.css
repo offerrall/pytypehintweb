@@ -1,0 +1,1243 @@
+/*
+ * pytypehintweb widget stylesheet.
+ *
+ * Optional. The widgets are semantically correct and keyboard-operable
+ * without it. Everything here is scoped to the pth-* class namespace and
+ * driven by --pth-* custom properties, so it never restyles host elements.
+ *
+ * Themes: automatic via prefers-color-scheme, manual via [data-theme] or the
+ * .light-mode / .dark-mode classes. No JavaScript is required to switch.
+ */
+
+:root {
+    /* Typography */
+    --pth-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --pth-font-size-base: 1rem;
+    --pth-font-size-small: 0.875rem;
+    --pth-font-size-label: 0.9375rem;
+    --pth-font-weight-normal: 400;
+    --pth-font-weight-semibold: 600;
+    --pth-letter-spacing-label: -0.01em;
+
+    /* Spacing */
+    --pth-gap-form: 1rem;
+    --pth-gap-field: 0.5rem;
+    --pth-gap-small: 0.25rem;
+    --pth-gap: 0.5rem;
+    --pth-gap-slider: 1rem;
+    --pth-padding-input: 0.75rem 1rem;
+    --pth-padding-list-value: 0.375rem 0.75rem;
+    --pth-margin-description: -0.25rem;
+    --pth-margin-error: 0.375rem;
+    --pth-field-spacing: 1rem;
+
+    /* Border radius */
+    --pth-radius-base: 10px;
+    --pth-radius-small: 8px;
+    --pth-item-radius: var(--pth-radius-small);
+
+    /* Border width */
+    --pth-border-width: 2px;
+    --pth-border-width-thin: 1px;
+
+    /* Sizes */
+    --pth-input-height: 3.125rem;
+    --pth-slider-height: 8px;
+    --pth-slider-thumb-size: 22px;
+    --pth-slider-value-min-width: 3.5rem;
+    --pth-padding-input-number: 0.75rem 3rem 0.75rem 1rem;
+    --pth-number-controls-width: 2.25rem;
+    --pth-number-controls-offset: 2px;
+    --pth-number-btn-font-size: 0.7rem;
+
+    /* Shadows */
+    --pth-shadow-focus: 0 0 0 4px var(--pth-focus-shadow);
+    --pth-shadow-error: 0 0 0 4px var(--pth-error-shadow);
+    --pth-shadow-button: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --pth-shadow-button-hover: 0 4px 8px rgba(0, 0, 0, 0.15);
+    --pth-shadow-button-active: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --pth-shadow-slider-thumb: 0 2px 6px rgba(0, 0, 0, 0.2);
+    --pth-shadow-slider-thumb-hover: 0 3px 8px rgba(0, 0, 0, 0.25);
+
+    /* Transforms */
+    --pth-transform-input-focus: translateY(-1px);
+    --pth-transform-button-hover: translateY(-2px);
+    --pth-transform-slider-thumb-hover: scale(1.15);
+    --pth-transform-slider-thumb-active: scale(1.25);
+
+    /* Transitions (explicit properties, no `all`) */
+    --pth-transition-base:
+        border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --pth-transition-toggle:
+        background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --pth-transition-fast:
+        background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Focus outline (keyboard) */
+    --pth-focus-width: 2px;
+    --pth-focus-offset: 2px;
+    --pth-focus-color: var(--pth-input-focus);
+
+    /* Colors — definitions (light / dark) */
+    --pth-label-color-light: #1a1a1a;
+    --pth-label-color-dark: #f0f0f0;
+    --pth-input-bg-light: #ffffff;
+    --pth-input-bg-dark: #1e1e1e;
+    --pth-input-text-light: #1a1a1a;
+    --pth-input-text-dark: #f0f0f0;
+    --pth-input-border-light: #d1d5db;
+    --pth-input-border-dark: #374151;
+    --pth-input-focus-light: #3b82f6;
+    --pth-input-focus-dark: #60a5fa;
+    --pth-description-color-light: #6b7280;
+    --pth-description-color-dark: #9ca3af;
+    --pth-submit-bg-light: #3b82f6;
+    --pth-submit-bg-dark: #60a5fa;
+    --pth-submit-hover-light: #2563eb;
+    --pth-submit-hover-dark: #3b82f6;
+    --pth-neutral-hover-light: #f3f4f6;
+    --pth-neutral-hover-dark: #374151;
+    --pth-nested-bg-light: #f7f7f9;
+    --pth-nested-bg-dark: #262626;
+    --pth-error-color: #ef4444;
+
+    /* Colors — active (default: light) */
+    --pth-label-color: var(--pth-label-color-light);
+    --pth-input-bg: var(--pth-input-bg-light);
+    --pth-input-text: var(--pth-input-text-light);
+    --pth-input-border: var(--pth-input-border-light);
+    --pth-input-focus: var(--pth-input-focus-light);
+    --pth-description-color: var(--pth-description-color-light);
+    --pth-submit-bg: var(--pth-submit-bg-light);
+    --pth-submit-hover: var(--pth-submit-hover-light);
+    --pth-neutral-hover: var(--pth-neutral-hover-light);
+    --pth-nested-background: var(--pth-nested-bg-light);
+    --pth-focus-shadow: rgba(59, 130, 246, 0.15);
+    --pth-error-shadow: rgba(239, 68, 68, 0.15);
+    --pth-color-scheme: light;
+
+    /* Aliases kept for containers and older overrides */
+    --pth-muted-color: var(--pth-description-color);
+    --pth-border-color: var(--pth-input-border);
+    --pth-item-background: var(--pth-input-bg);
+    --pth-item-border-color: var(--pth-input-border);
+    --pth-item-nested-background: var(--pth-nested-background);
+    --pth-choice-border-color: var(--pth-input-border);
+    --pth-group-border-color: var(--pth-input-border);
+    --pth-list-border-color: var(--pth-input-border);
+    --pth-nesting-indent: 0.875rem;
+    --pth-list-nested-border-color: var(--pth-input-border);
+    --pth-index-color: var(--pth-description-color);
+    --pth-small-font-size: var(--pth-font-size-small);
+}
+
+/* Automatic: OS preference */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --pth-label-color: var(--pth-label-color-dark);
+        --pth-input-bg: var(--pth-input-bg-dark);
+        --pth-input-text: var(--pth-input-text-dark);
+        --pth-input-border: var(--pth-input-border-dark);
+        --pth-input-focus: var(--pth-input-focus-dark);
+        --pth-description-color: var(--pth-description-color-dark);
+        --pth-submit-bg: var(--pth-submit-bg-dark);
+        --pth-submit-hover: var(--pth-submit-hover-dark);
+        --pth-neutral-hover: var(--pth-neutral-hover-dark);
+        --pth-nested-background: var(--pth-nested-bg-dark);
+        --pth-focus-shadow: rgba(96, 165, 250, 0.25);
+        --pth-error-shadow: rgba(239, 68, 68, 0.25);
+        --pth-color-scheme: dark;
+    }
+}
+
+/* Manual: data-theme attribute or theme class */
+[data-theme="light"],
+.light-mode {
+    --pth-label-color: var(--pth-label-color-light);
+    --pth-input-bg: var(--pth-input-bg-light);
+    --pth-input-text: var(--pth-input-text-light);
+    --pth-input-border: var(--pth-input-border-light);
+    --pth-input-focus: var(--pth-input-focus-light);
+    --pth-description-color: var(--pth-description-color-light);
+    --pth-submit-bg: var(--pth-submit-bg-light);
+    --pth-submit-hover: var(--pth-submit-hover-light);
+    --pth-neutral-hover: var(--pth-neutral-hover-light);
+    --pth-nested-background: var(--pth-nested-bg-light);
+    --pth-focus-shadow: rgba(59, 130, 246, 0.15);
+    --pth-error-shadow: rgba(239, 68, 68, 0.15);
+    --pth-color-scheme: light;
+}
+
+[data-theme="dark"],
+.dark-mode {
+    --pth-label-color: var(--pth-label-color-dark);
+    --pth-input-bg: var(--pth-input-bg-dark);
+    --pth-input-text: var(--pth-input-text-dark);
+    --pth-input-border: var(--pth-input-border-dark);
+    --pth-input-focus: var(--pth-input-focus-dark);
+    --pth-description-color: var(--pth-description-color-dark);
+    --pth-submit-bg: var(--pth-submit-bg-dark);
+    --pth-submit-hover: var(--pth-submit-hover-dark);
+    --pth-neutral-hover: var(--pth-neutral-hover-dark);
+    --pth-nested-background: var(--pth-nested-bg-dark);
+    --pth-focus-shadow: rgba(96, 165, 250, 0.25);
+    --pth-error-shadow: rgba(239, 68, 68, 0.25);
+    --pth-color-scheme: dark;
+}
+
+/* ===== Layout ===== */
+
+.pth-field [hidden],
+.pth-choice [hidden],
+.pth-group [hidden],
+.pth-list [hidden] {
+    display: none !important;
+}
+
+.pth-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+    margin-bottom: var(--pth-field-spacing);
+    font-family: var(--pth-font-family);
+}
+
+.pth-field-header {
+    display: flex;
+    align-items: center;
+    gap: var(--pth-gap);
+}
+
+.pth-label {
+    font-size: var(--pth-font-size-label);
+    font-weight: var(--pth-font-weight-semibold);
+    color: var(--pth-label-color);
+    letter-spacing: var(--pth-letter-spacing-label);
+    margin: 0;
+}
+
+.pth-field-header .pth-toggle {
+    margin-left: auto;
+}
+
+.pth-description {
+    font-size: var(--pth-font-size-small);
+    color: var(--pth-description-color);
+    margin-top: var(--pth-margin-description);
+}
+
+.pth-str-message,
+.pth-int-message,
+.pth-float-message,
+.pth-date-message,
+.pth-time-message,
+.pth-file-message,
+.pth-list-message {
+    font-size: var(--pth-font-size-small);
+    font-weight: 500;
+    color: var(--pth-error-color);
+    margin-top: var(--pth-margin-error);
+}
+
+/* Nested groups get a subtle inset. */
+.pth-field .pth-field {
+    margin-bottom: 0;
+}
+
+/* ===== Text, password and textarea ===== */
+
+.pth-str {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+}
+
+.pth-str input[type="text"],
+.pth-str input[type="password"],
+.pth-str textarea {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 100%;
+    min-height: var(--pth-input-height);
+    padding: var(--pth-padding-input);
+    font-size: var(--pth-font-size-base);
+    font-family: var(--pth-font-family);
+    color: var(--pth-input-text);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    transition: var(--pth-transition-base);
+}
+
+.pth-str textarea {
+    resize: vertical;
+}
+
+/* The colour assistant: the text field and its picker sit on one row, the text
+   growing to fill and the picker a fixed square. Both use the shared input
+   tokens so the pair reads as one control. */
+.pth-str-row {
+    display: flex;
+    gap: var(--pth-gap);
+    align-items: stretch;
+}
+
+.pth-str-row input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.pth-str-picker {
+    flex: 0 0 auto;
+    width: var(--pth-input-height);
+    min-height: var(--pth-input-height);
+    padding: var(--pth-gap-small);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-str-picker:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+}
+
+.pth-str input[type="text"]:focus,
+.pth-str input[type="password"]:focus,
+.pth-str textarea:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+/* ===== Integer, float, number and slider ===== */
+
+.pth-int,
+.pth-float {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+}
+
+.pth-int input[type="text"],
+.pth-float input[type="text"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 100%;
+    min-height: var(--pth-input-height);
+    padding: var(--pth-padding-input-number);
+    font-size: var(--pth-font-size-base);
+    font-family: var(--pth-font-family);
+    color: var(--pth-input-text);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    transition: var(--pth-transition-base);
+}
+
+.pth-int input[type="text"]:focus,
+.pth-float input[type="text"]:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+/* Native sub-widgets (native pickers, autofill) follow the active theme. */
+.pth-str input,
+.pth-str textarea,
+.pth-int input,
+.pth-float input,
+.pth-date input,
+.pth-time input,
+.pth-choice-input {
+    color-scheme: var(--pth-color-scheme);
+}
+
+/* ===== Native date and time ===== */
+
+.pth-date,
+.pth-time {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+}
+
+.pth-date input,
+.pth-time input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 100%;
+    min-height: var(--pth-input-height);
+    padding: var(--pth-padding-input);
+    font-size: var(--pth-font-size-base);
+    font-family: var(--pth-font-family);
+    color: var(--pth-input-text);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    transition: var(--pth-transition-base);
+}
+
+.pth-date input:focus,
+.pth-time input:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+/* ===== Number stepper (own buttons, no box of their own) ===== */
+
+.pth-number {
+    position: relative;
+    width: 100%;
+}
+
+.pth-number-controls {
+    position: absolute;
+    top: var(--pth-number-controls-offset);
+    right: var(--pth-number-controls-offset);
+    bottom: var(--pth-number-controls-offset);
+    display: flex;
+    flex-direction: column;
+    width: var(--pth-number-controls-width);
+    background: var(--pth-input-bg);
+    border-left: var(--pth-border-width-thin) solid var(--pth-input-border);
+    border-top-right-radius: var(--pth-radius-small);
+    border-bottom-right-radius: var(--pth-radius-small);
+    overflow: hidden;
+    transition:
+        border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pth-number-btn {
+    flex: 1;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--pth-label-color);
+    font-size: var(--pth-number-btn-font-size);
+    font-weight: var(--pth-font-weight-semibold);
+    cursor: pointer;
+    transition: var(--pth-transition-fast);
+}
+
+.pth-number-btn:first-child {
+    border-bottom: var(--pth-border-width-thin) solid var(--pth-input-border);
+}
+
+.pth-number-btn:hover {
+    background: var(--pth-neutral-hover);
+}
+
+.pth-number-btn:active {
+    background: var(--pth-input-focus);
+    color: #ffffff;
+}
+
+.pth-number input:focus + .pth-number-controls {
+    border-left-color: var(--pth-input-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+.pth-number input[aria-invalid="true"] + .pth-number-controls {
+    border-left-color: var(--pth-error-color);
+}
+
+/* Slider and its value badge sit on one row when both are present. */
+.pth-int:has(input[type="range"]) {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--pth-gap-slider);
+}
+
+.pth-int:has(input[type="range"]) .pth-int-message {
+    grid-column: 1 / -1;
+}
+
+.pth-int input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: var(--pth-slider-height);
+    border-radius: var(--pth-radius-small);
+    background: var(--pth-input-border);
+    transition: var(--pth-transition-base);
+}
+
+.pth-int input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: var(--pth-slider-thumb-size);
+    height: var(--pth-slider-thumb-size);
+    border-radius: 50%;
+    background: var(--pth-input-focus);
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+    box-shadow: var(--pth-shadow-slider-thumb);
+}
+
+.pth-int input[type="range"]::-webkit-slider-thumb:hover {
+    background: var(--pth-submit-hover);
+    transform: var(--pth-transform-slider-thumb-hover);
+    box-shadow: var(--pth-shadow-slider-thumb-hover);
+}
+
+.pth-int input[type="range"]::-webkit-slider-thumb:active {
+    transform: var(--pth-transform-slider-thumb-active);
+}
+
+.pth-int input[type="range"]::-moz-range-thumb {
+    width: var(--pth-slider-thumb-size);
+    height: var(--pth-slider-thumb-size);
+    border: none;
+    border-radius: 50%;
+    background: var(--pth-input-focus);
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+    box-shadow: var(--pth-shadow-slider-thumb);
+}
+
+.pth-int input[type="range"]::-moz-range-track {
+    height: var(--pth-slider-height);
+    border-radius: var(--pth-radius-small);
+    background: var(--pth-input-border);
+}
+
+.pth-int-value {
+    min-width: var(--pth-slider-value-min-width);
+    padding: var(--pth-padding-list-value);
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    color: var(--pth-label-color);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-small);
+    text-align: center;
+    font-family: var(--pth-font-family);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ===== Selects (choices and union branch selector) ===== */
+
+.pth-choice-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    min-height: var(--pth-input-height);
+    padding: var(--pth-padding-input);
+    padding-right: 2.75rem;
+    font-size: var(--pth-font-size-base);
+    font-family: var(--pth-font-family);
+    color: var(--pth-input-text);
+    background-color: var(--pth-input-bg);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-choice-input:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+.pth-choice-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pth-choice-input option[disabled] {
+    color: var(--pth-description-color);
+}
+
+/* ===== Optional toggle (native checkbox styled as a switch) ===== */
+
+.pth-toggle {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    width: 52px;
+    height: 28px;
+    margin: 0;
+    flex-shrink: 0;
+    border-radius: 28px;
+    background: var(--pth-input-border);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: var(--pth-transition-toggle);
+}
+
+.pth-toggle::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: var(--pth-transition-toggle);
+}
+
+.pth-toggle:checked {
+    background: var(--pth-input-focus);
+}
+
+.pth-toggle:checked::before {
+    transform: translateX(24px);
+}
+
+/* ===== Boolean (native checkbox styled as a switch) ===== */
+
+.pth-bool {
+    display: flex;
+    align-items: center;
+}
+
+.pth-bool input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    width: 52px;
+    height: 28px;
+    margin: 0;
+    flex-shrink: 0;
+    border-radius: 28px;
+    background: var(--pth-input-border);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: var(--pth-transition-toggle);
+}
+
+.pth-bool input[type="checkbox"]::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: var(--pth-transition-toggle);
+}
+
+.pth-bool input[type="checkbox"]:checked {
+    background: var(--pth-input-focus);
+}
+
+.pth-bool input[type="checkbox"]:checked::before {
+    transform: translateX(24px);
+}
+
+/* ===== File ===== */
+
+.pth-file {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+}
+
+/* The picker and its + button sit on one row; the input is a dashed drop zone. */
+.pth-file-row {
+    display: flex;
+    gap: var(--pth-gap);
+    align-items: stretch;
+}
+
+.pth-file input[type="file"] {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    padding: var(--pth-padding-input);
+    font-size: var(--pth-font-size-small);
+    font-family: var(--pth-font-family);
+    color: var(--pth-input-text);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) dashed var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    box-sizing: border-box;
+    color-scheme: var(--pth-color-scheme);
+    cursor: pointer;
+    overflow: hidden;
+    transition: var(--pth-transition-base);
+}
+
+.pth-file input[type="file"]:hover {
+    border-color: var(--pth-input-focus);
+}
+
+.pth-file input[type="file"]:focus {
+    border-color: var(--pth-input-focus);
+    box-shadow: var(--pth-shadow-focus);
+}
+
+.pth-file input[type="file"]::file-selector-button {
+    padding: 0.5rem 1rem;
+    margin-right: 0.875rem;
+    color: var(--pth-label-color);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-small);
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    font-family: var(--pth-font-family);
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-file input[type="file"]::file-selector-button:hover {
+    color: #ffffff;
+    background: var(--pth-input-focus);
+    border-color: var(--pth-input-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+/* Drag feedback: the row lights up while files hover over it. */
+.pth-file-row.pth-dragging input[type="file"] {
+    border-color: var(--pth-input-focus);
+    background: var(--pth-focus-shadow);
+}
+
+/* The + button appends more files to a multiple selection. */
+.pth-file-add {
+    flex-shrink: 0;
+    width: 3rem;
+    min-width: 3rem;
+    padding: 0;
+    color: #ffffff;
+    background: var(--pth-submit-bg);
+    border: none;
+    border-radius: var(--pth-radius-base);
+    font-size: 1.25rem;
+    font-weight: var(--pth-font-weight-semibold);
+    cursor: pointer;
+    box-shadow: var(--pth-shadow-button);
+    transition: var(--pth-transition-base);
+}
+
+.pth-file-add:hover {
+    background: var(--pth-submit-hover);
+    transform: var(--pth-transform-button-hover);
+    box-shadow: var(--pth-shadow-button-hover);
+}
+
+.pth-file-add:active {
+    transform: scale(0.96);
+    box-shadow: var(--pth-shadow-button-active);
+}
+
+.pth-file-add:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* ↺ Restore: a neutral square button beside the choose control, shown only
+   after Replace to undo it. */
+.pth-file-restore {
+    flex-shrink: 0;
+    width: 3rem;
+    min-width: 3rem;
+    padding: 0;
+    color: var(--pth-label-color);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-file-restore:hover {
+    color: var(--pth-input-focus);
+    border-color: var(--pth-input-focus);
+    transform: var(--pth-transform-button-hover);
+}
+
+.pth-file-restore:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* The list of chosen files, one card each (name + size + ✕). */
+.pth-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap);
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pth-input-border) transparent;
+}
+
+.pth-file-list:empty {
+    display: none;
+}
+
+.pth-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pth-gap);
+    padding: 0.625rem;
+    min-width: 0;
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+    transition: var(--pth-transition-base);
+}
+
+.pth-file-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-small);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.pth-file-name {
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    color: var(--pth-label-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pth-file-size {
+    font-size: 0.75rem;
+    color: var(--pth-description-color);
+}
+
+.pth-file-remove {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--pth-description-color);
+    background: transparent;
+    border: none;
+    border-radius: var(--pth-radius-small);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-file-remove:hover {
+    color: var(--pth-error-color);
+    background: var(--pth-neutral-hover);
+}
+
+.pth-file-remove:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* The "current file" display setValue() shows: existing files to keep, each a
+   label, with one ✕ to drop the mode. Styled to match the chosen-file cards. */
+.pth-file-current {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--pth-gap);
+    padding: 0.625rem;
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-base);
+}
+
+.pth-file-current-label {
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    color: var(--pth-label-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pth-file-current-replace {
+    flex-shrink: 0;
+    padding: 0.375rem 0.875rem;
+    color: var(--pth-label-color);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-small);
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    font-family: var(--pth-font-family);
+    line-height: 1;
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-file-current-replace:hover {
+    color: #ffffff;
+    background: var(--pth-input-focus);
+    border-color: var(--pth-input-focus);
+    transform: var(--pth-transform-input-focus);
+}
+
+.pth-file-current-replace:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* ===== Choice and group containers ===== */
+
+.pth-choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap);
+    border-left: var(--pth-border-width-thin) solid var(--pth-choice-border-color);
+    padding-left: var(--pth-nesting-indent);
+}
+
+.pth-mode-navigation {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr 2.5rem;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.pth-mode-position {
+    text-align: center;
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    color: var(--pth-description-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.pth-mode-previous,
+.pth-mode-next {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--pth-label-color);
+    background: var(--pth-input-bg);
+    border: var(--pth-border-width-thin) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-small);
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+}
+
+.pth-mode-previous:hover:not(:disabled),
+.pth-mode-next:hover:not(:disabled) {
+    border-color: var(--pth-input-focus);
+    color: var(--pth-input-focus);
+    background: var(--pth-neutral-hover);
+}
+
+.pth-mode-previous:disabled,
+.pth-mode-next:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pth-mode-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.pth-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap-field);
+    border-left: var(--pth-border-width-thin) solid var(--pth-group-border-color);
+    padding-left: var(--pth-nesting-indent);
+}
+
+/* ===== List ===== */
+
+.pth-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pth-gap);
+    align-items: flex-start;
+    border-left: var(--pth-border-width-thin) solid var(--pth-list-border-color);
+    padding-left: var(--pth-nesting-indent);
+}
+
+.pth-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    width: 100%;
+    counter-reset: pth-item;
+}
+
+.pth-list-items:empty {
+    display: none;
+}
+
+.pth-list-item {
+    display: grid;
+    grid-template-columns: 1fr 2rem;
+    gap: var(--pth-gap);
+    align-items: start;
+    counter-increment: pth-item;
+    padding: 0.625rem;
+    border: var(--pth-border-width-thin) solid var(--pth-item-border-color);
+    border-radius: var(--pth-item-radius);
+    background: var(--pth-item-background);
+    min-width: 0;
+}
+
+.pth-list-item::before {
+    content: counter(pth-item);
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    font-size: var(--pth-font-size-small);
+    color: var(--pth-index-color);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+.pth-list-item-content {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding-left: 1.5rem;
+}
+
+.pth-list-item > .pth-list-remove {
+    grid-column: 2;
+    grid-row: 1;
+    /* Centred against the item, whatever the content height. No fixed offset,
+       so nested lists and tall groups line up the same as a single input. */
+    align-self: center;
+}
+
+.pth-list-item .pth-list-item {
+    background: var(--pth-item-nested-background);
+}
+
+/* Lighter remove control: an icon, neutral by default, red on hover or focus. */
+.pth-list-remove {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    line-height: 1;
+    color: var(--pth-description-color);
+    background: transparent;
+    border: var(--pth-border-width-thin) solid transparent;
+    border-radius: var(--pth-radius-small);
+    cursor: pointer;
+    transition: var(--pth-transition-base);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pth-list-remove:hover,
+.pth-list-remove:focus-visible {
+    color: var(--pth-error-color);
+    background: var(--pth-neutral-hover);
+    border-color: var(--pth-input-border);
+    transform: scale(1.05);
+}
+
+.pth-list-remove svg {
+    display: block;
+    width: 1.125rem;
+    height: 1.125rem;
+    pointer-events: none;
+}
+
+/* Compact text add button below the list, with a decorative plus. */
+.pth-list-add {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.875rem;
+    font-size: var(--pth-font-size-small);
+    font-weight: var(--pth-font-weight-semibold);
+    font-family: var(--pth-font-family);
+    color: #ffffff;
+    background: var(--pth-submit-bg);
+    border: var(--pth-border-width) solid var(--pth-submit-bg);
+    border-radius: var(--pth-radius-base);
+    cursor: pointer;
+    box-shadow: var(--pth-shadow-button);
+    transition: var(--pth-transition-base);
+}
+
+.pth-list-add::before {
+    content: "+";
+    font-size: 1.125rem;
+    line-height: 1;
+}
+
+.pth-list-add:hover:not(:disabled) {
+    background: var(--pth-submit-hover);
+    border-color: var(--pth-submit-hover);
+    transform: var(--pth-transform-button-hover);
+    box-shadow: var(--pth-shadow-button-hover);
+}
+
+.pth-list-add:active:not(:disabled) {
+    transform: none;
+    box-shadow: var(--pth-shadow-button-active);
+}
+
+.pth-list-add[disabled],
+.pth-list-remove[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.pth-list-add[disabled]:hover,
+.pth-list-remove[disabled]:hover {
+    transform: none;
+}
+
+/* ===== Error state (driven by aria-invalid) =====
+ *
+ * An invalid field stays red on focus: the focus ring does not paint blue over
+ * the red. It is one or the other — blue when valid, red when in error. This
+ * rule comes after the :focus rule and matches its specificity, so the red
+ * border and halo win while focused.
+ */
+
+.pth-str input[aria-invalid="true"],
+.pth-str textarea[aria-invalid="true"],
+.pth-int input[aria-invalid="true"],
+.pth-float input[aria-invalid="true"],
+.pth-date input[aria-invalid="true"],
+.pth-time input[aria-invalid="true"] {
+    border-color: var(--pth-error-color);
+}
+
+.pth-str input[aria-invalid="true"]:focus,
+.pth-str textarea[aria-invalid="true"]:focus,
+.pth-int input[aria-invalid="true"]:focus,
+.pth-float input[aria-invalid="true"]:focus,
+.pth-date input[aria-invalid="true"]:focus,
+.pth-time input[aria-invalid="true"]:focus {
+    border-color: var(--pth-error-color);
+    box-shadow: var(--pth-shadow-error);
+}
+
+/* ===== Focus outline (keyboard) =====
+ *
+ * Text-like inputs and selects already show a single, soft focus ring through
+ * their border colour and box-shadow halo, so a solid outline would stack a
+ * hard second ring on top. They get a transparent outline instead: it adds no
+ * visible ring in normal mode, but it suppresses the browser's own default
+ * outline (which would otherwise show as a stray ring) and still becomes
+ * visible under forced-colors / high-contrast mode.
+ */
+
+.pth-str input:focus-visible,
+.pth-str textarea:focus-visible,
+.pth-int input[type="text"]:focus-visible,
+.pth-float input[type="text"]:focus-visible,
+.pth-date input:focus-visible,
+.pth-time input:focus-visible,
+.pth-choice-input:focus-visible {
+    outline: var(--pth-focus-width) solid transparent;
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* Controls with no halo of their own keep a solid, visible outline. */
+.pth-int input[type="range"]:focus-visible,
+.pth-toggle:focus-visible,
+.pth-bool input[type="checkbox"]:focus-visible,
+.pth-mode-previous:focus-visible,
+.pth-mode-next:focus-visible,
+.pth-list-add:focus-visible,
+.pth-list-remove:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: var(--pth-focus-offset);
+}
+
+/* The stepper buttons sit inside the input, so their outline is inset. */
+.pth-number-btn:focus-visible {
+    outline: var(--pth-focus-width) solid var(--pth-focus-color);
+    outline-offset: calc(-1 * var(--pth-focus-width));
+}
+
+/* ===== Reduced motion ===== */
+
+@media (prefers-reduced-motion: reduce) {
+    .pth-str input[type="text"],
+    .pth-str input[type="password"],
+    .pth-str textarea,
+    .pth-int input[type="text"],
+    .pth-float input[type="text"],
+    .pth-date input,
+    .pth-time input,
+    .pth-int input[type="range"],
+    .pth-int input[type="range"]::-webkit-slider-thumb,
+    .pth-int input[type="range"]::-moz-range-thumb,
+    .pth-number-controls,
+    .pth-number-btn,
+    .pth-choice-input,
+    .pth-toggle,
+    .pth-toggle::before,
+    .pth-bool input[type="checkbox"],
+    .pth-bool input[type="checkbox"]::before,
+    .pth-list-add,
+    .pth-list-remove,
+    .pth-mode-previous,
+    .pth-mode-next {
+        transition: none;
+    }
+
+    .pth-str input:focus,
+    .pth-str textarea:focus,
+    .pth-int input[type="text"]:focus,
+    .pth-float input[type="text"]:focus,
+    .pth-date input:focus,
+    .pth-time input:focus,
+    .pth-number input:focus + .pth-number-controls,
+    .pth-choice-input:focus,
+    .pth-int input[type="range"]::-webkit-slider-thumb:hover,
+    .pth-int input[type="range"]::-webkit-slider-thumb:active,
+    .pth-int input[type="range"]::-moz-range-thumb:hover,
+    .pth-list-add:hover,
+    .pth-list-remove:hover,
+    .pth-list-remove:focus-visible {
+        transform: none;
+    }
+}
