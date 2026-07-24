@@ -36,6 +36,7 @@ Issues = "https://github.com/offerrall/pytypehintweb/issues"
 demo = [
     "fastapi",
     "uvicorn",
+    "python-multipart",
 ]
 test = [
     "pytest",
