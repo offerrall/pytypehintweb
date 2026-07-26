@@ -65,9 +65,17 @@ import { MODULES, measure } from "./size-report.mjs";
 // the plan looking for file nodes. Measured with LF: raw 141_195 -> 143_130
 // (+1_935, spread over inputs.js +862, fields.js +1_005 and form.js +68) and
 // gzip 32_802 -> 33_337 (+535).
-const RAW_CEILING = 144_100;
-const GZIP_CEILING = 33_800;
-const PER_FILE_RAW_CEILING = 57_500;
+// Lowered for the comment strip: the shipped modules carry no comments at all,
+// because they are served as they are, with no build step, so every explanatory
+// line was download weight on every page. The reasoning they held lives in
+// docs/, which is where a reader looks for it. Nothing else changed — same
+// tokens, same behaviour, whole suite green. Measured with LF: raw 143_130 ->
+// 116_829 (-26_301) and gzip 33_337 -> 21_939 (-11_398). The ceilings drop with
+// them, keeping roughly the same headroom as before so the budget still catches
+// bloat instead of quietly absorbing it.
+const RAW_CEILING = 118_000;
+const GZIP_CEILING = 22_400;
+const PER_FILE_RAW_CEILING = 45_000;
 
 
 test("the runtime ships exactly the expected modules", () => {

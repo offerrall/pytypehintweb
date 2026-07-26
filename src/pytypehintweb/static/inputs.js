@@ -8,29 +8,13 @@ import { firstSliderValue, onSliderGrid } from "./slider.js";
 
 const INTEGER = /^-?\d+$/;
 
-// Opt-in for the colour assistant: a StrWidget whose pattern is this exact string
-// (mirroring COLOR_PATTERN in pytypehintweb.types, pinned equal by a test) mounts
-// a picker. Any other pattern does not. Presentation, never contract.
 export const COLOR_PATTERN = "#[0-9a-fA-F]{6}";
 
-// The canonical ISO forms date and time hold: fixed-width, so a string
-// comparison orders them. These guard setValue and classify the control's value;
-// the native picker keeps it in this shape. A date must be a real calendar date
-// (isValidIsoDate, the same check the plan validator runs); a time is whole
-// seconds only, so no fraction or impossible clock value passes.
 const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 const isIsoTime = (value) => ISO_TIME.test(value);
 
-// The whole float grammar: an optional sign, digits, and an optional fractional
-// part with at least one digit on each side of the point. No scientific
-// notation, no bare ".5" or "5.", no decimal comma. Anything else is invalid,
-// never a silently reinterpreted number.
 const FLOAT = /^-?\d+(\.\d+)?$/;
 
-// String(1e-7) is "1e-7" and String(1e21) is "1e+21", both rejected by the
-// grammar above, so writing one would leave the control holding text the widget
-// itself calls invalid. Reuses that grammar rather than restating it; nothing is
-// ever expanded, rounded or truncated to make a number fit.
 function isWritableFloat(value) {
     return typeof value === "number"
         && Number.isFinite(value)
@@ -164,9 +148,6 @@ export class IntChoiceWidget extends ChoiceInput {
 }
 
 
-// The select value is an index into the plan's choices, so each option is the
-// exact double the plan carried; there is no "safe float" to guard, only that
-// every choice is a finite number.
 export class FloatChoiceWidget extends ChoiceInput {
     constructor(choices, initialValue) {
         checkChoices(
@@ -178,9 +159,6 @@ export class FloatChoiceWidget extends ChoiceInput {
 }
 
 
-// A native checkbox. Like a choice widget it always represents a value — an
-// unchecked box is `false`, a checked one is `true` — so it is never empty,
-// never in error and always ready. It has no validation message.
 export class BoolWidget extends Widget {
     constructor({ value = false } = {}) {
         super();
@@ -251,32 +229,6 @@ export function mintFileReference(name, extension) {
 }
 
 
-// A file field has two origins with different roles (see docs/javascript.md).
-//
-// A *local choice*: the user picks File(s) and the widget mints references — the
-// file's own name slugged to bare ASCII (its first 15 characters at most), a
-// fresh UUID, and the file's lowercased extension. This is the only source of
-// *new* references; nothing external can fabricate a choice that did not happen.
-// A `multiple` node (from `list[File]`) accumulates: each pick (click, the +
-// button or a drop) mints one reference per file and appends it, each row has an
-// ✕ to drop just that file, and value() is the array, with minFiles / maxFiles
-// bounds; a single node makes value() a lone reference or null and each pick
-// replaces the previous. The reference is a local promise, not proof of storage.
-//
-// An *existing* reference, planted by the host through `setValue(string)` (or an
-// array when multiple): a value it already holds — from a past read(), its own
-// store. The widget shows it declared as such ("Current file: …", with an ✕, not
-// editable) and value()/read() transport it verbatim, so a Struct with a file
-// path round-trips through an edit form untouched. It must pass the extension
-// filter like a minted one. The ✕ or `setValue(null)` clear it; choosing a file
-// replaces it with a fresh minted reference. Plan defaults stay rejected: a plan
-// is static, a frozen reference in it is a promise nobody renews — the current
-// file is runtime, set fresh from the host's truth at mount.
-//
-// Building the selection (accumulate, per-file removal, the + button, drag & drop
-// and the file cards) is presentation only: the value contract above — minted
-// references, the array/lone/null shape, the extension filter and the count
-// bounds — is unchanged.
 export class FileWidget extends Widget {
     constructor({
         extensions = FILE_DEFAULTS.extensions,
@@ -309,26 +261,12 @@ export class FileWidget extends Widget {
         this.currentReplaceLabel = currentReplaceLabel;
         this.currentRestoreLabel = currentRestoreLabel;
 
-        // _files: the raw browser Files of the current selection (empty when
-        // none). _refs: a reference minted per file, in order (empty when none, or
-        // when the selection is invalid). _invalid: the last pick had a file whose
-        // extension is not accepted. _current: the labels of "current file" mode,
-        // or null.
         this._files = [];
         this._refs = [];
         this._invalid = false;
         this._current = null;
-        // The references Replace set aside, so its ↺ can undo back to the current
-        // file. Held while the field is out of current mode; a new setValue or a
-        // successful restore drops it.
         this._stashedCurrent = null;
-        // The references a host has already uploaded. They stay in value(), they
-        // just stop being pending. Never cleared: a reference carries a UUID, so
-        // one that leaves the selection never comes back.
         this._uploaded = new Set();
-        // Like the other scalar widgets, hold the validation message back until
-        // the user touches the field (a pick or a removal) or showErrors() forces
-        // it, so an untouched required field is not born red.
         this.touched = false;
 
         this.el = document.createElement("div");
@@ -350,24 +288,17 @@ export class FileWidget extends Widget {
 
         this.row.append(this.input);
 
-        // A + beside the input opens a second picker whose files are appended,
-        // the only way to grow a multiple selection past one native pick. A
-        // single field replaces, so it has no + button.
         this.addBtn = null;
         if (this.multiple) {
             this.addBtn = document.createElement("button");
             this.addBtn.type = "button";
             this.addBtn.className = "pth-file-add";
             this.addBtn.textContent = "+";
-            // The glyph is the visible affordance; the accessible name has to say
-            // what it does, so a screen reader announces "add file", not "plus".
             this.addBtn.setAttribute("aria-label", "Add file");
             this.addBtn.addEventListener("click", () => this._openPicker());
             this.row.append(this.addBtn);
         }
 
-        // ↺ beside the choose control, shown only after Replace: it restores the
-        // current file Replace set aside, undoing the replacement.
         this.restore = document.createElement("button");
         this.restore.type = "button";
         this.restore.className = "pth-file-restore";
@@ -411,23 +342,18 @@ export class FileWidget extends Widget {
     }
 
     value() {
-        // Current-file mode transports the existing reference(s) verbatim — the
-        // host's own truth, planted through setValue and carried back untouched.
         if (this._current !== null) {
             return this.multiple ? this._current.slice() : this._current[0];
         }
 
         if (this.multiple) {
-            return this._refs.slice();              // an array, possibly empty
+            return this._refs.slice();
         }
 
         return this._refs.length > 0 ? this._refs[0] : null;
     }
 
     uploads() {
-        // Only a local pick fills _files, and _refs runs parallel to it, so the
-        // pair is already here. A current reference — planted by setValue, the
-        // host's own truth — has no File behind it and is never pending.
         if (this._current !== null) {
             return [];
         }
@@ -451,23 +377,17 @@ export class FileWidget extends Widget {
 
     isEmpty() {
         if (this._current !== null) {
-            return false;                           // a value is being kept
+            return false;
         }
 
         if (this.multiple) {
-            return false;                           // a list is never empty; [] is a value
+            return false;
         }
 
         return this._files.length === 0;
     }
 
     setValue(value) {
-        // File-widget semantics. A string (or array of strings when multiple) is
-        // an *existing* reference the host already holds — from a past read(), its
-        // own store — shown declared as such ("Current file: …", not editable) and
-        // transported verbatim. It must pass the node's extension filter, the same
-        // as a minted one. null clears. Only a local choice makes a *new*
-        // reference; setValue never fabricates a choice that did not happen.
         if (value === null) {
             this._clear();
             return;
@@ -490,8 +410,6 @@ export class FileWidget extends Widget {
             return null;
         }
 
-        // A chosen file whose extension is not accepted mints no reference (the
-        // browser let through what `accept` should have filtered).
         if (this._invalid) {
             return this.invalidMessage;
         }
@@ -530,8 +448,6 @@ export class FileWidget extends Widget {
             throw new TypeError("FileWidget.setValue expects a string or null");
         }
 
-        // A current reference is transported, so it must clear the same extension
-        // filter a minted one does; an empty string is never a reference.
         for (const reference of candidates) {
             if (reference === "") {
                 throw new TypeError("FileWidget.setValue expects a non-empty reference");
@@ -570,8 +486,6 @@ export class FileWidget extends Widget {
         this._emitChange();
     }
 
-    // Replace: set the current file aside so ↺ can undo, then drop into the native
-    // choose control with an empty selection. Not a touch — the user is mid-edit.
     _beginReplace() {
         this._stashedCurrent = this._current;
         this._current = null;
@@ -586,8 +500,6 @@ export class FileWidget extends Widget {
         this._emitChange();
     }
 
-    // ↺: undo a Replace — bring the set-aside current file back and forget any
-    // pick made since.
     _restore() {
         if (this._stashedCurrent === null) {
             return;
@@ -606,10 +518,6 @@ export class FileWidget extends Widget {
         this._emitChange();
     }
 
-    // The accepted extension the file's name ends with, matching the core's
-    // endsWith filter. With no declared extensions any file is accepted and its
-    // own last-dot extension (possibly empty) is used; otherwise the declared
-    // extension it ends with, or null when none does.
     _matchedExtension(name) {
         const lower = name.toLowerCase();
 
@@ -626,11 +534,6 @@ export class FileWidget extends Widget {
         this._ingest(this.input.files ? Array.from(this.input.files) : []);
     }
 
-    // Mirror the stored selection back onto the native control so its "N files
-    // chosen" text matches the cards below; an empty selection clears it.
-    // DataTransfer is the only way to write input.files — where it is missing
-    // (the abstract test DOM) the control keeps whatever the pick left it and the
-    // cards stay the source of truth.
     _syncNativeInput() {
         if (this._files.length === 0) {
             this.input.value = "";
@@ -652,15 +555,9 @@ export class FileWidget extends Widget {
         this.input.files = data.files;
     }
 
-    // A pick — from the native input, the + button or a drop. A single field
-    // takes at most one file and replaces. A multiple field appends when append
-    // is true (the + button and a drop, both additive gestures); the native
-    // control resets the list to the new selection. Extension acceptance stays
-    // all-or-nothing per pick: one unaccepted file rejects the whole pick (mints
-    // nothing, flags invalid) rather than minting a partial set.
     _ingest(incoming, append = false) {
         this.touched = true;
-        this._current = null;                       // choosing a file leaves current mode
+        this._current = null;
 
         const chosen = this.multiple ? incoming : incoming.slice(0, 1);
         const matched = chosen.map((file) => this._matchedExtension(file.name));
@@ -669,7 +566,7 @@ export class FileWidget extends Widget {
             this._invalid = true;
 
             if (!this.multiple) {
-                this._files = chosen;               // shown so the mistake is visible
+                this._files = chosen;
                 this._refs = [];
             }
         } else {
@@ -709,9 +606,6 @@ export class FileWidget extends Widget {
         this._emitChange();
     }
 
-    // The + button opens a throwaway file input whose files are appended to the
-    // list. Guarded so the abstract test DOM (no click()) never touches it — it
-    // only fires on a real user click.
     _openPicker() {
         const picker = document.createElement("input");
         picker.type = "file";
@@ -730,10 +624,6 @@ export class FileWidget extends Widget {
         }
     }
 
-    // Drag & drop over the row adds files (append), the same additive gesture as
-    // the + button. preventDefault on drop stops the native input from also
-    // swallowing the files, so the pick runs through _ingest once; the dragging
-    // class is visual feedback only.
     _setupDrag() {
         let depth = 0;
 
@@ -775,8 +665,6 @@ export class FileWidget extends Widget {
         });
     }
 
-    // A human-readable size, or null when the File carries none (some browsers,
-    // and the abstract test DOM, hand over name-only objects).
     _formatSize(bytes) {
         if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
             return null;
@@ -830,9 +718,6 @@ export class FileWidget extends Widget {
             remove.type = "button";
             remove.className = "pth-file-remove";
             remove.textContent = "×";
-            // Same glyph on every card, so the accessible names must differ. The
-            // one-based index rides the configured label; the list re-renders on
-            // every removal, so it stays in visible order.
             remove.setAttribute(
                 "aria-label", `${this.currentRemoveLabel} ${index + 1}`);
             remove.addEventListener("click", () => this._removeAt(index));
@@ -847,15 +732,12 @@ export class FileWidget extends Widget {
 
         if (this._current === null) {
             this.current.hidden = true;
-            this.row.hidden = false;                // the choose control is back
-            // ↺ appears only after Replace set a current file aside.
+            this.row.hidden = false;
             this.restore.hidden = this._stashedCurrent === null;
             return;
         }
 
         this.current.hidden = false;
-        // A held current file owns the field: hide the choose control (input, +
-        // and ↺) entirely, so replacing goes through the Replace button.
         this.row.hidden = true;
         this.restore.hidden = true;
 
@@ -866,10 +748,6 @@ export class FileWidget extends Widget {
             this.current.append(item);
         }
 
-        // Replace drops the held current file and brings the native choose
-        // control back — the same for a single file and a list, where the input
-        // then resets the selection and the + button grows it. It sets the current
-        // reference aside so the ↺ button can undo the replacement.
         const replace = document.createElement("button");
         replace.type = "button";
         replace.className = "pth-file-current-replace";
@@ -921,10 +799,6 @@ export class StrWidget extends Widget {
             throw new TypeError("StrWidget rows must be a positive safe integer");
         }
 
-        // A pattern is programmer configuration, not a live user value: an
-        // uncompilable one is misuse, so throw at construction like the other
-        // argument checks rather than mount a permanently invalid widget. The
-        // plan path reaches the same verdict earlier, in checkPlan.
         if (pattern !== null) {
             try {
                 this.regexp = new RegExp(`^(?:${pattern})$`, "u");
@@ -945,20 +819,12 @@ export class StrWidget extends Widget {
             this.input.setAttribute("rows", String(rows));
         }
 
-        // The library owns pattern validation with its own compiled RegExp; the
-        // native HTML `pattern` attribute is never written, so the browser's
-        // constraint-validation UI (with a possibly different regex dialect)
-        // does not compete. `title` remains as plain help text for the rule.
         setAttributes(this.input, {
             title: pattern === null ? null : patternMessage,
             placeholder,
         });
         this.input.value = value;
 
-        // Colour assistant: an input[type=color] beside the text field, only when
-        // the pattern is exactly COLOR_PATTERN (never on a textarea). The text
-        // stays the source of truth; the picker only writes a valid #rrggbb into
-        // it and rides the normal input flow, adding no validation of its own.
         this.picker = null;
 
         if (rows === null && pattern === COLOR_PATTERN) {
@@ -997,9 +863,6 @@ export class StrWidget extends Widget {
     }
 
     _syncPicker() {
-        // Mirror the text into the picker only when it holds a valid colour; a
-        // picker cannot represent empty or invalid, so otherwise it stays put. A
-        // real colour input normalises to lowercase #rrggbb, so mirror that.
         if (this.picker === null) {
             return;
         }
@@ -1245,10 +1108,6 @@ export class IntWidget extends Widget {
         return this.input;
     }
 
-    // The raw text is classified without ever rounding it. A syntactically
-    // valid but out-of-range integer is "unsafe", never a rounded Number: the
-    // safe check is a BigInt comparison on the canonical text, run only after
-    // the syntax check, so "9007199254740993" is unsafe, not 9007199254740992.
     _parse() {
         const text = this.input.value.trim();
 
@@ -1279,8 +1138,6 @@ export class IntWidget extends Widget {
 
     _check(value) {
         if (value === null) {
-            // A real range input cannot represent an empty value, so a slider
-            // has no null state; an ordinary integer widget does.
             if (this.slider) {
                 throw new TypeError("slider value must be a safe integer");
             }
@@ -1292,10 +1149,6 @@ export class IntWidget extends Widget {
                 "IntWidget.setValue expects a safe integer or null");
         }
 
-        // A range input cannot hold a value outside its bounds or off its grid:
-        // the browser clamps or snaps it silently, leaving a number nobody asked
-        // for. Refuse before writing. An ordinary integer input keeps the
-        // opposite contract — out of bounds travels and error() reports it.
         if (this.slider) {
             if (value < this.min || value > this.max) {
                 throw new TypeError(
@@ -1389,8 +1242,6 @@ export class FloatWidget extends Widget {
             throw new TypeError("FloatWidget step must be a positive finite number");
         }
 
-        // A plan default arrives as a number; refuse it rather than mount a
-        // control whose own grammar calls its content invalid.
         if (typeof value === "number" && !isWritableFloat(value)) {
             throw new TypeError(
                 "FloatWidget value must be a number JavaScript writes as a "
@@ -1466,10 +1317,6 @@ export class FloatWidget extends Widget {
         return button;
     }
 
-    // Step is presentation, not a grid: value ± step is accepted as it lands,
-    // even when the double arithmetic gives 0.30000000000000004. The value is
-    // clamped to the raw bound, never nudged to satisfy an exclusive one, so an
-    // exclusive edge lands on the boundary and reads as an error, uncorrected.
     _step(direction) {
         const current = this.number() ?? 0;
         let next = current + this.stepAmount * direction;
@@ -1482,7 +1329,6 @@ export class FloatWidget extends Widget {
             next = this.min;
         }
 
-        // Refusing to move beats writing text the grammar would reject.
         if (next === current || !isWritableFloat(next)) {
             return;
         }
@@ -1495,10 +1341,6 @@ export class FloatWidget extends Widget {
         return this.input;
     }
 
-    // The raw text is classified without ever rewriting it. A grammar match can
-    // still overflow to Infinity for a gigantic magnitude; that is not a value
-    // the core could receive, so it reads as null and is never transported, the
-    // same principle as IntWidget's unsafe integer.
     _parse() {
         const text = this.input.value.trim();
 
@@ -1604,10 +1446,6 @@ export class FloatWidget extends Widget {
 }
 
 
-// A native date/time control. The browser presents a localized picker whose
-// value is canonical ISO, so there is no parsing grammar: value() is the ISO
-// string or null when empty, and bounds compare lexicographically over the
-// fixed-width ISO form, honouring an exclusive flag where the node carries one.
 class IsoInput extends Widget {
     constructor({
         type, isValid, className, messageClass, what,
@@ -1631,8 +1469,6 @@ class IsoInput extends Widget {
 
         this.input = document.createElement("input");
         this.input.type = type;
-        // Native min/max/step are picker hints; error() is the authoritative
-        // validator, so an exclusive time bound is still enforced below.
         setAttributes(this.input, { min, max, step, placeholder });
         this.input.value = value === "" ? "" : String(value);
         this.el.append(this.input);
@@ -1718,7 +1554,6 @@ class IsoInput extends Widget {
 }
 
 
-// A date bound is inclusive (plan_of converted any exclusive one by ±1 day).
 export class DateWidget extends IsoInput {
     constructor({
         min = DATE_DEFAULTS.min,
@@ -1739,8 +1574,6 @@ export class DateWidget extends IsoInput {
 }
 
 
-// A time bound keeps its exclusive flag (the core compares directly). step=1
-// opens the seconds field of the native control; fixed, not configurable.
 export class TimeWidget extends IsoInput {
     constructor({
         min = TIME_DEFAULTS.min,

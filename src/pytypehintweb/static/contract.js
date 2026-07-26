@@ -67,8 +67,6 @@ function checkPositionTemplate(value, path) {
 }
 
 
-// A button or accessible label is plain text: non-empty and, like Python's
-// WebConfig, carrying no placeholders (which the widget could never fill).
 function checkLabel(value, path) {
     if (value === "") {
         fail(path, "must not be empty");
@@ -177,9 +175,6 @@ function checkIntChoices(options, path) {
 }
 
 
-// Bounds are compared directly against the double, exactly as the core does: an
-// exclusive bound rejects the boundary value itself. There is no ±1 conversion,
-// because a float has no next representable step the way an integer does.
 function checkFloatChoices(options, path) {
     if (options.choices === null) {
         return;
@@ -281,11 +276,6 @@ function checkIntNode(node, path) {
              "slider and placeholder ask for different controls");
     }
 
-    // An ordinary integer range with no valid multiple is unconstructible in the
-    // core (pytypehint rejects it at schema compile), and an unsatisfiable range
-    // in a manual plan corrupts nothing at runtime — the widget simply stays
-    // invalid — so checkPlan does not re-verify it. The slider grid is different:
-    // checkSlider guards the value initialization it feeds.
     checkSlider(options, path);
     checkIntChoices(options, path);
 }
@@ -302,10 +292,6 @@ function checkFloatNode(node, path) {
     checkLabel(options.decreaseLabel, `${path}.options.decreaseLabel`);
     checkChoices(options.choices, `${path}.options.choices`);
 
-    // The core rejects an empty range when it compiles the schema, so plan_of
-    // never emits one; a manual plan still can, and here it is caught. Equal
-    // bounds are empty only when a side is exclusive — the float analogue of the
-    // core's own check, with no ±1 arithmetic.
     if (options.min !== null && options.max !== null) {
         const empty = options.min > options.max
             || (options.min === options.max
@@ -326,9 +312,6 @@ function checkFloatNode(node, path) {
 }
 
 
-// Date and time compare lexicographically over their fixed-width ISO form.
-// `minExclusive === true` reads correctly for both: a date node omits the flag
-// (inclusive), a time node carries it.
 function checkIsoChoices(options, path) {
     if (options.choices === null) {
         return;
@@ -368,7 +351,6 @@ function checkDateNode(node, path) {
     checkTemplate(options.maxMessage, `${path}.options.maxMessage`, true);
     checkChoices(options.choices, `${path}.options.choices`);
 
-    // Date bounds are inclusive, so the range is empty only when min > max.
     if (options.min !== null && options.max !== null && options.min > options.max) {
         fail(`${path}.options.min`, "min and max leave no representable value");
     }
@@ -390,8 +372,6 @@ function checkTimeNode(node, path) {
     checkTemplate(options.maxMessage, `${path}.options.maxMessage`, true);
     checkChoices(options.choices, `${path}.options.choices`);
 
-    // Time carries the exclusive flag, so equal bounds are empty when a side is
-    // exclusive — the core's own rule, with no conversion.
     if (options.min !== null && options.max !== null) {
         const empty = options.min > options.max
             || (options.min === options.max
@@ -412,9 +392,6 @@ function checkTimeNode(node, path) {
 }
 
 
-// A file node's extensions are already validated as well-formed by normalization.
-// Here: the fixed messages and labels, and the multiple/count coherence — count
-// bounds order, and that a single file carries none (they belong to list[File]).
 function checkFileNode(node, path) {
     const options = node.options;
 
@@ -471,17 +448,10 @@ function checkNode(node, path) {
     }
 
     if (node.kind === "bool") {
-        // A bool node has no options and no semantic constraints; its structure
-        // is fully checked by normalization. Return so it does not fall through
-        // to the optional-node handler below.
         return;
     }
 
     if (node.kind === "enum") {
-        // An enum has no bounds and no conflicting controls: its choices are a
-        // non-empty array of unique names, already enforced by normalization,
-        // and placeholder/labels are pinned to null there. Nothing semantic is
-        // left to verify at the node level; the default is checked separately.
         return;
     }
 
@@ -529,9 +499,6 @@ function checkNode(node, path) {
                 fail(`${at}.value`, "duplicated branch value");
             }
 
-            // inline transport spreads the branch value into an object next to
-            // $type; on a scalar branch read() would emit character-indexed junk,
-            // so an inline branch must wrap an object node.
             if (branch.mode === "inline" && branch.node.kind !== "object") {
                 fail(`${at}.mode`, "inline requires an object node");
             }
@@ -547,10 +514,6 @@ function checkNode(node, path) {
 }
 
 
-// A plan default is producer configuration, not a live user value, so it must
-// satisfy the node's constraints, not merely its shape. A user typing an
-// invalid value is a runtime concern the widget reports; a plan that ships an
-// invalid default is a contract error caught here.
 function checkStrDefault(options, value, path) {
     const length = stringLength(value);
 
@@ -596,8 +559,6 @@ function checkIntDefault(options, value, path) {
     if (options.slider) {
         const step = options.step === null ? 1 : options.step;
 
-        // min and max are guaranteed present on a slider. The grid rule itself
-        // lives in slider.js, shared with the widget so the two cannot diverge.
         if (!onSliderGrid(value, options.min, step)) {
             fail(path,
                  `is not on the slider grid stepping by ${step} from `
@@ -624,16 +585,12 @@ function checkFloatDefault(options, value, path) {
         }
     }
 
-    // The choice came from the plan, so it is the same double as the default:
-    // exact equality is the right test, never a tolerance.
     if (options.choices !== null && !options.choices.includes(value)) {
         fail(path, "expected one of the declared choices");
     }
 }
 
 
-// Shared by date and time: ISO bounds compared lexicographically, exclusive
-// where the node carries the flag (time) and inclusive otherwise (date).
 function checkIsoDefault(options, value, path) {
     if (options.min !== null) {
         const below = options.minExclusive === true
@@ -715,9 +672,6 @@ function checkInitial(node, value, path) {
     }
 
     if (node.kind === "file") {
-        // A file mints its reference locally from the user's choice, so it can
-        // carry no initial value at all — not at the field level, and not nested
-        // in a list, object or union branch.
         fail(path, "a file field cannot carry a default; its reference is "
                  + "generated locally");
         return;
@@ -813,9 +767,6 @@ function checkFieldInitial(field, value, path) {
 function checkField(field, path) {
     checkNode(field.node, `${path}.node`);
 
-    // A file field carries no default of any kind, not even the null a switched-
-    // off optional would use (checkFieldInitial lets that through, so it is caught
-    // here). The off state of an optional file is expressed by its toggle instead.
     if (field.hasDefault && field.node.kind === "file") {
         fail(`${path}.default`, "a file field cannot carry a default; its "
                               + "reference is generated locally");

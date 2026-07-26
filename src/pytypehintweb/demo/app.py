@@ -172,9 +172,6 @@ receives the transport object.</p>
 
   const root = document.getElementById("root");
 
-  // Sample records for the "editing a record" cases: what a host would hold and
-  // setValue from its store. The avatar is an existing reference (not a fresh
-  // upload), so read() carries it back untouched unless the user replaces it.
   const SAMPLE_RECORDS = {
     "file-edit": { name: "Ada Lovelace", avatar: "avatars/ada-lovelace.jpg" },
     "file-list-edit": {
@@ -183,8 +180,6 @@ receives the transport object.</p>
     },
   };
 
-  // Light/dark toggle. Sets data-theme on the root, which both the demo chrome
-  // and widgets.css honour. Until clicked, the OS preference is followed.
   document.getElementById("theme-toggle").addEventListener("click", () => {
     const el = document.documentElement;
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
@@ -228,14 +223,6 @@ receives the transport object.</p>
   }
   // demo-error-helpers-end
 
-  // demo-upload-start
-  // The upload cycle for file fields — the pattern any host (FuncToWeb included)
-  // copies. The widget mints the reference locally when the user picks a file
-  // (file() is the bytes, value() the reference); the host uploads the bytes
-  // labelled with that reference through its own channel. read() carries the
-  // reference immediately, so it is a local promise, not proof of storage: the
-  // library never checks that bytes exist behind it. This demo uploads on change
-  // and keeps the send button disabled until every chosen file confirms.
   async function uploadFile(file, reference) {
     const body = new FormData();
     body.append("reference", reference);
@@ -249,12 +236,9 @@ receives the transport object.</p>
   }
 
   const wiredUploads = new WeakSet();
-  const uploaded = new WeakMap();   // file widget -> Set of stored references
-  const uploading = new WeakMap();  // file widget -> count of uploads in flight
+  const uploaded = new WeakMap();
+  const uploading = new WeakMap();
 
-  // Visit every FileWidget in a widget tree. Field wraps one widget; groups,
-  // lists and choices hold several. Inactive choice branches and list rows added
-  // later are reached because wiring re-runs on every form change.
   function eachFileWidget(widget, visit) {
     if (widget instanceof FileWidget) {
       visit(widget);
@@ -267,16 +251,13 @@ receives the transport object.</p>
     for (const branch of widget.branches ?? []) eachFileWidget(branch.widget, visit);
   }
 
-  // Each locally-chosen file paired with the reference the widget minted for it —
-  // what the host uploads. A current-file reference (set from the host's store) has
-  // no File behind it, so it yields no pair: it is already stored, nothing to send.
   function currentPairs(widget) {
     const value = widget.value();
     if (value === null) return [];
 
     if (widget.multiple) {
       const files = widget.files();
-      if (files.length !== value.length) return [];   // current-file mode or invalid
+      if (files.length !== value.length) return [];
       return files.map((file, i) => ({ file, reference: value[i] }));
     }
 
@@ -284,9 +265,6 @@ receives the transport object.</p>
     return file === null ? [] : [{ file, reference: value }];
   }
 
-  // A form is upload-settled when every file widget has stored every reference of
-  // its current selection and none is uploading. The send button waits on this on
-  // top of form.isReady(): a reference is a promise until the bytes land.
   function uploadsSettled(form) {
     let settled = true;
 
@@ -315,7 +293,7 @@ receives the transport object.</p>
           uploaded.set(widget, stored);
 
           for (const { file, reference } of currentPairs(widget)) {
-            if (stored.has(reference)) continue;       // already uploaded
+            if (stored.has(reference)) continue;
 
             uploading.set(widget, (uploading.get(widget) ?? 0) + 1);
             onSettleChange();
@@ -324,7 +302,6 @@ receives the transport object.</p>
               await uploadFile(file, reference);
               stored.add(reference);
             } catch {
-              // Demo: leave it unsettled. A real host surfaces the failure.
             } finally {
               uploading.set(widget, (uploading.get(widget) ?? 1) - 1);
               onSettleChange();
@@ -334,13 +311,8 @@ receives the transport object.</p>
       });
     }
   }
-  // demo-upload-end
 
   // demo-prefill-start
-  // The interpretations to try, in order, for a query-string prefill value.
-  // An empty or whitespace-only parameter yields none, so ?age= never becomes
-  // 0; a non-empty value is tried as a string, then as an integer only when it
-  // reads as one. A malformed integer is simply skipped by setValue().
   function prefillCandidates(raw) {
     if (raw.trim() === "") {
       return [];
@@ -377,8 +349,6 @@ receives the transport object.</p>
     const settled = uploadsSettled(form);
     const canSend = ready && settled;
 
-    // A file's reference is ready the instant it is chosen, but its bytes are
-    // not stored until the upload confirms, so send waits on both.
     send.className = `send ${canSend ? "ready" : "pending"}`;
     send.disabled = !canSend;
 
@@ -404,9 +374,6 @@ receives the transport object.</p>
 
     for (const field of form.fields) host.append(field.widget.el);
 
-    // An "editing a record" case opens prefilled from a sample record — the same
-    // per-field setValue a real edit form makes. On the file field the reference
-    // is an existing one, shown as the current file, transported back verbatim.
     const record = SAMPLE_RECORDS[entry.id];
     if (record !== undefined) {
       for (const field of form.fields) {
@@ -414,16 +381,11 @@ receives the transport object.</p>
           try {
             field.widget.widget.setValue(record[field.name]);
           } catch {
-            // a record value that fits no field is skipped
           }
         }
       }
     }
 
-    // widget.setValue() demo: prefill any root field named in the query string,
-    // e.g. ?comment=hello. setValue is a scalar-widget operation, so it targets
-    // the field's inner widget; a value that fits no scalar field is skipped. A
-    // string is tried first, then an integer.
     const params = new URLSearchParams(location.search);
     for (const field of form.fields) {
       if (!params.has(field.name)) continue;
@@ -433,13 +395,10 @@ receives the transport object.</p>
           field.widget.widget.setValue(candidate);
           break;
         } catch {
-          // try the next interpretation
         }
       }
     }
 
-    // Wire the upload cycle for any file field, now and as list rows appear.
-    // An upload settling is not a form change, so it repaints through onSettle.
     const repaint = () => paint(form, output, send);
     wireUploads(form, repaint);
 
@@ -585,8 +544,6 @@ receives the transport object.</p>
 
     sections.forEach((section, i) => renderSection(section, i + 1, index));
 
-    // Deep links: a #case-<id> (or #<section-id>) may sit inside collapsed
-    // <details>. Open every ancestor <details> and scroll the target in.
     const openTo = (hash) => {
       if (!hash) return;
 

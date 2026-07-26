@@ -48,8 +48,6 @@ function compileNode(node, nextId, initial) {
             return scalar(new FloatWidget(withValue(node.options, initial)));
 
         case "date":
-            // A date/time value is an ISO string, so a closed set of them is a
-            // select over strings — StrChoiceWidget already is exactly that.
             if (node.options.choices !== null) {
                 return scalar(new StrChoiceWidget(node.options.choices, initial));
             }
@@ -62,17 +60,12 @@ function compileNode(node, nextId, initial) {
             return scalar(new TimeWidget(withValue(node.options, initial)));
 
         case "enum":
-            // An enum is a closed set of member names, exactly what a select
-            // over strings is — StrChoiceWidget, reused like date/time choices.
-            // choices is always non-empty, so there is no plain-input fallback.
             return scalar(new StrChoiceWidget(node.options.choices, initial));
 
         case "bool":
             return scalar(new BoolWidget(withValue(node.options, initial)));
 
         case "file":
-            // A file field mints its own reference from the user's choice and
-            // carries no default, so it never receives an initial value.
             return scalar(new FileWidget(node.options));
 
         case "list":

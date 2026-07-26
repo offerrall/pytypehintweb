@@ -115,10 +115,6 @@ export function renderMessage(messageEl, control, text, { invalid = true } = {})
     messageEl.textContent = text ?? "";
     messageEl.hidden = text === null;
 
-    // `invalid` is true for a validation message (the usual case) and false for
-    // an informative status the control still describes but is not in error over
-    // — a file field waiting for its upload, say. The message stays announced
-    // through aria-describedby either way; only aria-invalid is withheld.
     markInvalid(control, invalid && text !== null);
     describedBy(control, messageEl.id, text !== null);
 }
@@ -151,9 +147,6 @@ export class Widget {
     }
 
     setValue(value) {
-        // Programmatic assignment is validate-and-apply. It is a scalar-widget
-        // operation: containers are built from a plan (constructors), not
-        // mutated wholesale, so there is no candidate/rollback protocol.
         this._check(value);
         this._apply(value);
         this._emitChange();
@@ -179,10 +172,6 @@ export class Widget {
         return null;
     }
 
-    // The files chosen locally that a host still has to upload, as
-    // { reference, file, complete } — complete() marks one as no longer pending
-    // without touching value(). Only FileWidget ever holds any; a container
-    // gathers its children's, so a host never walks the plan looking for them.
     uploads() {
         return [];
     }
@@ -191,13 +180,6 @@ export class Widget {
         return !this.isEmpty() && !this.hasError();
     }
 
-    // Reveal any validation message the widget has held back until the user
-    // touched it — the submit-time "mark all errors" pass a host runs when the
-    // user submits without having visited every field. The default does nothing
-    // (a checkbox or a select is never in error); the touched scalar inputs flip
-    // their flag and re-render, and the containers reach their children.
-    // Idempotent, and it never changes value(), read() or isReady() — only what
-    // is shown.
     showErrors() {}
 }
 
@@ -220,9 +202,6 @@ function checkControl(control) {
 }
 
 
-// A container is built from a plan through constructors, never assigned
-// wholesale, so it has no composite setValue(). It says so plainly rather than
-// inheriting the base template and failing deep inside on the abstract "_check".
 function rejectContainerSetValue(widget) {
     throw new TypeError(
         `${widget.constructor.name} does not support setValue(): a container is `
@@ -295,10 +274,6 @@ export class Field extends Widget {
 
         this.el.append(header);
 
-        // null and undefined are both absence (compileField maps null to
-        // undefined; the direct API takes either). Treating null as a description
-        // would append an empty <small>, mint an id, and point aria-describedby
-        // at nothing.
         if (description !== undefined && description !== null) {
             const descriptionEl = document.createElement("small");
             descriptionEl.className = "pth-description";
@@ -328,9 +303,6 @@ export class Field extends Widget {
     }
 
     setEnabled(enabled) {
-        // Programmatic equivalent of clicking the optional toggle: flips it, hides
-        // or shows the content, and emits one change — the same path as a user
-        // click. A required field has no toggle and is always on.
         if (typeof enabled !== "boolean") {
             throw new TypeError("Field.setEnabled expects a boolean");
         }
@@ -365,7 +337,6 @@ export class Field extends Widget {
     }
 
     uploads() {
-        // A switched-off optional reads null, so nothing under it is uploaded.
         if (!this.enabled()) {
             return [];
         }
@@ -398,8 +369,6 @@ export class Field extends Widget {
     }
 
     showErrors() {
-        // A switched-off optional reads null and is never in error, so there is
-        // nothing to reveal; an enabled field defers to its widget.
         if (this.enabled()) {
             this.widget.showErrors();
         }
@@ -507,7 +476,6 @@ export class ChoiceWidget extends Widget {
     }
 
     uploads() {
-        // Only the active branch is read, so only it uploads.
         return this.active().uploads();
     }
 
@@ -524,7 +492,6 @@ export class ChoiceWidget extends Widget {
     }
 
     showErrors() {
-        // Only the active branch is shown and read, so only it reveals.
         this.active().showErrors();
     }
 
@@ -541,10 +508,6 @@ export class ChoiceWidget extends Widget {
         this._emitChange();
     }
 
-    // Reaching an extreme disables the button just activated (index 0 disables
-    // previous, the last disables next), and a disabled control drops focus to
-    // the body. Move it to the still-enabled sibling instead. Only these two
-    // buttons, only on an interactive move — never at construction.
     _keepFocusReachable(direction) {
         const activated = direction < 0 ? this.previous : this.next;
 
@@ -847,7 +810,6 @@ export class ListWidget extends Widget {
     }
 
     showErrors() {
-        // Reveal the list's own count message and every item's.
         this._touched = true;
         this._applyState();
 

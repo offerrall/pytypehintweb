@@ -66,10 +66,14 @@ Nothing here is asynchronous: there is no code splitting and `compileForm()`
 stays synchronous. The split is simply what the import graph already gives.
 
 The shipped files are readable, unminified ES modules and are served as they
-are. A production host is free to serve them with gzip or Brotli, run them
-through its own minifier, or bundle them with the rest of its application. The
-library itself adds no npm package, bundler or build dependency, and the exact
-byte sizes are an implementation detail, not part of the contract.
+are. They carry no comments: with no build step there is nothing to strip them,
+so every explanatory line would be downloaded by every page. The reasoning
+behind the runtime lives in this documentation instead — which is also where a
+reader looks for it. A production host is free to serve them with gzip or
+Brotli, run them through its own minifier, or bundle them with the rest of its
+application. The library itself adds no npm package, bundler or build
+dependency, and the exact byte sizes are an implementation detail, not part of
+the contract.
 
 ## `compileForm()`
 

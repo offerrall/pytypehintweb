@@ -10,9 +10,6 @@ export function fail(path, message) {
 }
 
 
-// A field name can be "__proto__", so keys are written/read as own data
-// properties instead of through target[key], which would hit the __proto__
-// setter (putKey) or inherit Object.prototype for an absent key (ownValue).
 export function putKey(target, key, value) {
     Object.defineProperty(target, key, {
         value, writable: true, enumerable: true, configurable: true,
@@ -174,11 +171,6 @@ function floatChoices(value, path) {
 }
 
 
-// The canonical ISO forms date/time travel in, matching Python's isoformat():
-// a real calendar date as YYYY-MM-DD (isValidIsoDate, shared with the widget),
-// and HH:MM:SS at whole-second precision (the domain the core pins for a time).
-// Fixed-width, so comparison orders them; the time pattern also bounds each
-// field, so no fraction and no impossible clock value enters a plan.
 export const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 
 
@@ -242,10 +234,6 @@ function timeChoices(value, path) {
 }
 
 
-// An enum node's choices are its members' names: always a non-empty array of
-// unique strings (the core rejects an empty enum, and list(cls) never repeats a
-// name). Unlike the optional choices of str/int/float, they are never null — the
-// closed set of names is the enum itself.
 function enumChoices(value, path) {
     asArray(value, path);
 
@@ -265,15 +253,10 @@ function enumChoices(value, path) {
         seen.add(choice);
     });
 
-    // A fresh array, like every other choices normalizer: the normalized plan
-    // never shares a mutable value with its input.
     return value.slice();
 }
 
 
-// A property reserved but not yet carried: its only valid value is null. labels
-// waits for an Extra vocabulary; an enum's placeholder is always null because a
-// closed select always holds a value and never needs a prompt.
 function mustBeNull(value, path) {
     if (value !== null) {
         fail(path, "must be null");
@@ -300,11 +283,6 @@ function intChoices(value, path) {
 }
 
 
-// A file node's extensions are a possibly-empty array of lowercase extensions,
-// each starting with a dot (".pdf"), with no repeats. An empty array means any
-// file. The core guarantees this shape for a generated plan; this enforces it for
-// a hand-written one. The reference itself is opaque — only its extension is ever
-// inspected, never its meaning.
 function fileExtensions(value, path) {
     asArray(value, path);
 
@@ -434,8 +412,6 @@ const CHOICE_CHECKS = {
     positionLabel: asString,
 };
 
-// A bool node carries an empty options object: no keys to fill, and any key is
-// rejected as unknown.
 const BOOL_CHECKS = {};
 
 const SCALARS = {
@@ -468,8 +444,6 @@ function requireKeys(value, keys, path) {
 }
 
 
-// The plan is a single, fully expanded representation: every known property is
-// mandatory. A missing property is a validation error, never a default fill.
 function fill(source, checks, path) {
     const result = {};
 
@@ -604,8 +578,6 @@ function normalizeOptional(node, path) {
         kind: "optional",
         label: asString(node.label, `${path}.label`),
         enabled: asBoolean(node.enabled, `${path}.enabled`),
-        // An optional never wraps another optional: only a list item may be
-        // optional, and a list item is a single node, not an optional chain.
         node: normalizeNode(node.node, `${path}.node`, false),
     };
 }
@@ -661,9 +633,6 @@ export function normalizeField(field, path = "field") {
         fail(`${path}.name`, "must be a non-empty string");
     }
 
-    // "$type"/"$value" are the reserved keys of the discriminated transport; a
-    // field carrying either collides with the discriminator or payload and is
-    // unroutable, so the contract rejects the reservation it always assumed.
     if (name === "$type" || name === "$value") {
         fail(`${path}.name`,
              `"${name}" is reserved by the transport and cannot be a field name`);
@@ -679,9 +648,6 @@ export function normalizeField(field, path = "field") {
         node: normalizeNode(field.node, `${path}.node`),
     };
 
-    // `enabled` is the resolved state of the optional toggle, so it is only
-    // meaningful when the field is optional. A required field is always on;
-    // a false `enabled` on it is a contradiction, not a silently ignored flag.
     if (!result.optional && result.enabled === false) {
         fail(`${path}.enabled`,
              "must be true when the field is not optional");

@@ -40,6 +40,18 @@ the host's error, not one `pytypehintweb` names or swallows. This is the one way
 A host like FuncToWeb can therefore turn references into persistent paths without
 reimplementing the walk over objects, lists, optionals and unions.
 
+The browser modules now ship without comments. They are served exactly as they
+are written, with no build step in between, so every explanatory line was weight
+downloaded by every page that loads the runtime. The reasoning they held is not
+lost — it lives in `docs/`, which is where a reader looks for it anyway.
+
+Only comments were removed: same code, same tokens, same behaviour, whole suite
+green. Measured with LF endings, the runtime drops from 143 130 to 116 829 raw
+bytes and from 33 337 to 21 939 gzipped, a third of the compressed download. The
+size budget's ceilings drop with it, keeping the same headroom as before. The
+demo page's inline script was stripped the same way, keeping only the four
+markers its tests use to extract helpers.
+
 
 ## [0.0.1] - 2026-07-22
 
