@@ -259,6 +259,7 @@ export function compileForm(plan, { prefix = "pth" } = {}) {
         description: normalized.description,
         fields,
         isReady: () => fields.every((field) => field.widget.isReady()),
+        uploads: () => fields.flatMap((field) => field.widget.uploads()),
         hasError: () => fields.some((field) => field.widget.hasError()),
         showErrors: () => fields.forEach((field) => field.widget.showErrors()),
         onChange: (callback) => {

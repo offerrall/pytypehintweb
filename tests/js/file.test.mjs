@@ -5,10 +5,14 @@ import assert from "node:assert/strict";
 
 import { checkPlan, compileForm } from "./harness.mjs";
 import { normalizeNode } from "../../src/pytypehintweb/static/normalize.js";
-import { FileWidget } from "../../src/pytypehintweb/static/inputs.js";
+import { FileWidget, asciiSlug } from "../../src/pytypehintweb/static/inputs.js";
 
 
-const REFERENCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+// A reference is an optional ASCII slug of the file's name, then the hash, then
+// the matched extension. Anchored at the start so a leading anything-else fails.
+const HASH = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const REFERENCE = new RegExp(`^(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?${HASH}`, "i");
+const BARE_REFERENCE = new RegExp(`^${HASH}`, "i");
 
 
 function plan(fields) {
@@ -160,6 +164,84 @@ test("choosing a new file mints a fresh reference", () => {
     choose(widget, "second.pdf");
 
     assert.notEqual(first, widget.value());
+});
+
+
+// --- the name that leads a reference ----------------------------------------
+
+test("asciiSlug compresses a name to bare lowercase ASCII", () => {
+    assert.equal(asciiSlug("Informe Añual"), "informe-anual");
+    assert.equal(asciiSlug("Ficha_Técnica (v2)"), "ficha-tecnica-v");
+    assert.equal(asciiSlug("Größe"), "grosse");
+    assert.equal(asciiSlug("--a  b--"), "a-b");
+});
+
+
+test("asciiSlug keeps at most the first 15 characters", () => {
+    assert.equal(asciiSlug("presupuesto general 2026"), "presupuesto-gen");
+    assert.equal(asciiSlug("presupuesto general".slice(0, 12)), "presupuesto");
+    assert.equal(asciiSlug("corto"), "corto");
+});
+
+
+test("asciiSlug keeps nothing from a name with no ASCII to keep", () => {
+    assert.equal(asciiSlug("日本語"), "");
+    assert.equal(asciiSlug("   "), "");
+    assert.equal(asciiSlug(""), "");
+});
+
+
+test("the minted reference leads with the file's normalized name", () => {
+    const widget = new FileWidget({ extensions: [".pdf"] });
+
+    choose(widget, "Informe Añual.PDF");
+
+    assert.match(widget.value(), REFERENCE);
+    assert.ok(widget.value().startsWith("informe-anual-"));
+    assert.ok(widget.value().endsWith(".pdf"));
+    assert.equal(widget.value().split(".").length, 2);   // the extension, once
+});
+
+
+test("a name longer than 15 characters is cut to its first 15", () => {
+    const widget = new FileWidget({ extensions: [".pdf"] });
+
+    choose(widget, "presupuesto general 2026.pdf");
+
+    assert.ok(widget.value().startsWith("presupuesto-gen-"));
+});
+
+
+test("a name that normalizes to nothing mints a bare hash", () => {
+    const widget = new FileWidget({ extensions: [".pdf"] });
+
+    choose(widget, "日本語.pdf");
+
+    assert.match(widget.value(), BARE_REFERENCE);
+    assert.ok(widget.value().endsWith(".pdf"));
+});
+
+
+test("the name in a reference never repeats the extension", () => {
+    const widget = new FileWidget();
+
+    choose(widget, "archive.tar.gz");
+
+    assert.ok(widget.value().startsWith("archive-tar-"));
+    assert.ok(widget.value().endsWith(".gz"));
+});
+
+
+test("two picks of the same name still mint distinct references", () => {
+    const widget = new FileWidget({ extensions: [".pdf"], multiple: true });
+
+    choose(widget, "informe.pdf", "informe.pdf");
+
+    const [first, second] = widget.value();
+
+    assert.ok(first.startsWith("informe-"));
+    assert.ok(second.startsWith("informe-"));
+    assert.notEqual(first, second);
 });
 
 

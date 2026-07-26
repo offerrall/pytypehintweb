@@ -1086,7 +1086,8 @@ SECTIONS = [
      ]),
     ("file", "Files",
      "A file field's value is a reference the widget generates locally the moment "
-     "you pick a file — a UUID plus the file's extension. read() carries it "
+     "you pick a file — the file's name compressed to bare ASCII (15 characters "
+     "at most), a UUID and the file's extension. read() carries it "
      "straight away; the reference is a local promise, not proof of storage. The "
      "host reads file()/files() and value() on change and uploads the bytes "
      "labelled with each reference through its own channel. This demo does exactly "

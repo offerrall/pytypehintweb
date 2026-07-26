@@ -53,9 +53,21 @@ import { MODULES, measure } from "./size-report.mjs";
 // and the file add/remove buttons carry distinguishable accessible names. All in
 // fields.js (+1_523) and inputs.js (+725). Measured with LF: raw 138_059 ->
 // 140_307 and gzip 31_657 -> 32_413.
-const RAW_CEILING = 141_200;
-const GZIP_CEILING = 32_700;
-const PER_FILE_RAW_CEILING = 56_000;
+// Nudged for 0.0.2: a minted file reference now leads with the chosen file's own
+// name, compressed to bare ASCII and capped at 15 characters (asciiSlug plus
+// mintFileReference, the small folding table included), so a storage listing
+// reads as names rather than as bare hashes. All in inputs.js. Measured with LF:
+// raw 140_307 -> 141_195 (+888) and gzip 32_413 -> 32_802 (+389).
+// Nudged again for uploads(): a widget now reports the local files a host still
+// has to upload, as { reference, file, complete }. FileWidget pairs the refs it
+// already mints with the Files it already holds and remembers which ones a host
+// confirmed; the containers aggregate their children's, so a host never walks
+// the plan looking for file nodes. Measured with LF: raw 141_195 -> 143_130
+// (+1_935, spread over inputs.js +862, fields.js +1_005 and form.js +68) and
+// gzip 32_802 -> 33_337 (+535).
+const RAW_CEILING = 144_100;
+const GZIP_CEILING = 33_800;
+const PER_FILE_RAW_CEILING = 57_500;
 
 
 test("the runtime ships exactly the expected modules", () => {

@@ -137,12 +137,13 @@ def test_an_optional_file_without_a_default_is_fine():
 # --- transport: a file is a str on the wire ---------------------------------
 
 def test_a_generated_reference_round_trips_through_decode_and_build():
-    # The widget mints a reference shaped like <uuid>.<ext>; on the wire it is a
-    # plain string, so decode passes it through untouched and build accepts it.
+    # The widget mints a reference shaped like <name>-<uuid>.<ext>; on the wire it
+    # is a plain string, so decode passes it through untouched and build accepts
+    # it.
     def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
 
     schema = signature_of(f)
-    reference = "550e8400-e29b-41d4-a716-446655440000.pdf"
+    reference = "informe-anual-550e8400-e29b-41d4-a716-446655440000.pdf"
 
     prepared = decode(schema, {"value": reference})
     assert prepared == {"value": reference}
@@ -301,6 +302,21 @@ def test_replacing_the_file_transports_a_fresh_generated_reference(node, tmp_pat
 
     assert read["name"] == "Ada"
     assert read["avatar"] != "avatars/ada.jpg"               # a new local choice
+    assert read["avatar"].endswith(".jpg")
+
+    schema = struct_of(User)
+    built = schema.build(decode(schema, json.loads(json.dumps(read))))
+
+    assert built.avatar == read["avatar"]
+
+
+def test_the_chosen_file_name_leads_the_reference_across_the_wire(node, tmp_path):
+    # The name the widget slugs is part of the reference, so it has to survive the
+    # crossing intact: JSON, decode() and build() all treat it as plain text.
+    read = _file_star(node, tmp_path, User,
+                      {"choose": {"avatar": ["Informe Añual.jpg"]}})
+
+    assert read["avatar"].startswith("informe-anual-")
     assert read["avatar"].endswith(".jpg")
 
     schema = struct_of(User)

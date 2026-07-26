@@ -179,6 +179,14 @@ export class Widget {
         return null;
     }
 
+    // The files chosen locally that a host still has to upload, as
+    // { reference, file, complete } — complete() marks one as no longer pending
+    // without touching value(). Only FileWidget ever holds any; a container
+    // gathers its children's, so a host never walks the plan looking for them.
+    uploads() {
+        return [];
+    }
+
     isReady() {
         return !this.isEmpty() && !this.hasError();
     }
@@ -356,6 +364,15 @@ export class Field extends Widget {
         return this.widget.value();
     }
 
+    uploads() {
+        // A switched-off optional reads null, so nothing under it is uploaded.
+        if (!this.enabled()) {
+            return [];
+        }
+
+        return this.widget.uploads();
+    }
+
     isEmpty() {
         if (!this.enabled()) {
             return false;
@@ -489,6 +506,11 @@ export class ChoiceWidget extends Widget {
         return this.active().value();
     }
 
+    uploads() {
+        // Only the active branch is read, so only it uploads.
+        return this.active().uploads();
+    }
+
     isEmpty() {
         return this.active().isEmpty();
     }
@@ -589,6 +611,10 @@ export class GroupWidget extends Widget {
         }
 
         return result;
+    }
+
+    uploads() {
+        return this.children.flatMap((child) => child.widget.uploads());
     }
 
     isEmpty() {
@@ -782,6 +808,10 @@ export class ListWidget extends Widget {
 
     value() {
         return this.items.map((item) => item.widget.value());
+    }
+
+    uploads() {
+        return this.items.flatMap((item) => item.widget.uploads());
     }
 
     isEmpty() {

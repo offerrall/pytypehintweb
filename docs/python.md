@@ -187,7 +187,8 @@ the first render with no "choose one" step.
 
 `IsPathFile` on a `str` turns the field into a **file node** (`kind: "file"`)
 rather than a text box. Its value is a reference string the browser widget
-**generates locally** the moment the user picks a file — a UUID plus the file's
+**generates locally** the moment the user picks a file — the file's name
+compressed to bare ASCII (15 characters at most), a UUID, and the file's
 lowercased extension. The library never interprets it beyond the **extension**:
 a lenient `value.lower().endswith(ext)` filter over the declared list, in the
 widget and in the core alike — a guard against honest mistakes, never a check
@@ -542,7 +543,7 @@ accepts the value at all.
 ## `decode()`
 
 ```python
-decode(schema, data) -> dict
+decode(schema, data, *, file_resolver=None) -> dict
 ```
 
 `decode()` is the reverse counterpart of `plan_of()`: where `plan_of()` turns a
@@ -577,6 +578,7 @@ transport could not carry faithfully.
 | `Date`  | an ISO string (`"2026-07-22"`) | `date.fromisoformat(...)` |
 | `Time`  | an ISO string (`"14:30:00"`)   | `time.fromisoformat(...)` |
 | `EnumShape` | a member name (`"ACTIVO"`) | the member `cls["ACTIVO"]` |
+| `Str` with `IsPathFile` | a reference (`"informe-<uuid>.pdf"`) | `file_resolver(reference)`, only when a resolver is given (see below) |
 
 It converts only where that shape is the single possible reading of the path.
 Root fields, nested objects, lists (and nested lists), optionals (a `None`
@@ -593,9 +595,10 @@ string. This is the rule that keeps the conversion honest, and it is inviolable.
 `decode()` **prepares, it does not validate.** A value the core will reject —
 `"abc"` in a float field, `"not-a-date"` in a date field — passes through
 unchanged, and `build()` reports it with its own error. `decode()` never raises
-on a value; the error is the core's territory. (It does raise on a schema that
-is neither a `Signature` nor a `Struct`: that is a programming error, not a
-value.)
+on a value of its own accord; the error is the core's territory. (It does raise
+on a schema that is neither a `Signature` nor a `Struct`: that is a programming
+error, not a value. And a `file_resolver` the host supplies may raise — its
+exception travels out untouched.)
 
 ### Unions and the wrapper
 
@@ -622,6 +625,68 @@ reading — the string's content is never consulted.
 (`Struct.fields`, `Field.shape`, `List.item`, `type(shape) is Float`/`Date`/
 `Time`/`EnumShape`, `EnumShape.cls`, `option_id()`): it never touches the core
 internals.
+
+### `file_resolver`
+
+A file reference is a `str` the widget minted locally, and the library has no
+opinion on what it names. `file_resolver` is the hook that lets the host give it
+one:
+
+```python
+def resolve_file(reference: str) -> str:
+    return str(uploads_dir / reference)
+
+
+values = decode(signature, data, file_resolver=resolve_file)
+```
+
+```text
+without file_resolver
+→ references come back as they arrived
+
+with file_resolver
+→ every file value is the string the resolver returned
+```
+
+It is `Callable[[str], str]`, keyword-only and optional. The reference goes in,
+whatever the host returns comes out and continues down the pipeline to
+`build()`. There is nothing to register and no type to subclass: the callable is
+the whole contract.
+
+The resolver rides the walk that was already there, so it reaches every position
+a file node can occupy — a root field, a `list[File]` (once per reference, in
+order), a struct field, a list item, or the selected branch of a union in any of
+the three transport modes. What decides the call is the **shape** — a `Str`
+carrying `IsPathFile`, and unambiguously so — never what the string looks like,
+which is the same rule that governs every other conversion here. An ordinary
+`str` field holding something that resembles a reference is untouched.
+
+Absence stays absence: a field the transport does not carry, an explicit `None`,
+a switched-off optional and an empty list never reach the resolver. A reference
+planted with `setValue()` is an ordinary file value, so it does pass through.
+
+The library learns nothing about storage in exchange. It knows the value belongs
+to a file node; whether that reference becomes a local path, an object-store key
+or any other string is the host's business, and so is the failure:
+
+```python
+def resolve_file(reference: str) -> str:
+    target = uploads_dir / reference
+
+    if not target.is_file():
+        raise FileNotFoundError(f"File not found: {reference}")
+
+    return str(target)
+```
+
+An exception the resolver raises **propagates unchanged** — `decode()` neither
+wraps it nor invents an error of its own. It is the one way `decode()` raises on
+a value rather than leaving it for `build()`, and only because the host asked for
+it.
+
+FuncToWeb is one such host: it resolves references against its uploads directory
+so the function it calls receives a plain path. Nothing about `decode()` requires
+that, or any other particular storage.
 
 ## `WebConfig`
 

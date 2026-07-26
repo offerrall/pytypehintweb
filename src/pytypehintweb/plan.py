@@ -584,8 +584,9 @@ def _contains_file(shapes) -> bool:
 
 def _file_node(shape, config, path: str) -> dict:
     # IsPathFile turns a Str into a file field. The value is a reference string the
-    # browser widget generates locally from the chosen file (a UUID plus its
-    # extension); the core certifies it only by extension (an honest-mistake filter
+    # browser widget generates locally from the chosen file (its name slugged to
+    # bare ASCII, a UUID and its extension); the core certifies it only by
+    # extension (an honest-mistake filter
     # over value.lower().endswith(ext), never a check that bytes exist). extensions
     # is possibly empty (any file); it maps to the input's accept attribute. A file
     # carries no default — its reference comes from the user's choice — so a

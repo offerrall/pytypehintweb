@@ -89,8 +89,9 @@ The suites are written around the failures that would otherwise be silent:
   member, an unknown name is left for the core, and two enums sharing a class
   name in a union are rejected by the core at compile time (the class name is the
   wrapper discriminator);
-- only a local choice makes a new file reference (a UUID plus the file's
-  extension) — one per file, `list[File]` minting an array through one `multiple`
+- only a local choice makes a new file reference (the file's name slugged to bare
+  ASCII, a UUID and the file's extension, the UUID carrying the uniqueness on its
+  own) — one per file, `list[File]` minting an array through one `multiple`
   widget; a reference is filtered only by extension in the widget and the core,
   never checked for existence;
 - `setValue(string)` plants an existing reference, shown on screen declared as the

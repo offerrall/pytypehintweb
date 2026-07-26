@@ -220,10 +220,42 @@ export class BoolWidget extends Widget {
 }
 
 
+const FILE_SLUG_LIMIT = 15;
+
+const ASCII_FOLDINGS = {
+    "ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "å": "a", "đ": "d", "ð": "d",
+    "þ": "th", "ł": "l", "ı": "i",
+};
+
+
+export function asciiSlug(text) {
+    return text
+        .normalize("NFD")
+        .replace(/\p{M}+/gu, "")
+        .toLowerCase()
+        .replace(/[ßæœøåđðþłı]/gu, (char) => ASCII_FOLDINGS[char])
+        .replace(/[^a-z0-9]+/gu, "-")
+        .replace(/^-+|-+$/gu, "")
+        .slice(0, FILE_SLUG_LIMIT)
+        .replace(/-+$/u, "");
+}
+
+
+export function mintFileReference(name, extension) {
+    const slug = asciiSlug(name.slice(0, name.length - extension.length));
+    const hash = globalThis.crypto.randomUUID();
+
+    return slug === ""
+        ? `${hash}${extension}`
+        : `${slug}-${hash}${extension}`;
+}
+
+
 // A file field has two origins with different roles (see docs/javascript.md).
 //
-// A *local choice*: the user picks File(s) and the widget mints references — a
-// fresh UUID plus each file's lowercased extension. This is the only source of
+// A *local choice*: the user picks File(s) and the widget mints references — the
+// file's own name slugged to bare ASCII (its first 15 characters at most), a
+// fresh UUID, and the file's lowercased extension. This is the only source of
 // *new* references; nothing external can fabricate a choice that did not happen.
 // A `multiple` node (from `list[File]`) accumulates: each pick (click, the +
 // button or a drop) mints one reference per file and appends it, each row has an
@@ -290,6 +322,10 @@ export class FileWidget extends Widget {
         // file. Held while the field is out of current mode; a new setValue or a
         // successful restore drops it.
         this._stashedCurrent = null;
+        // The references a host has already uploaded. They stay in value(), they
+        // just stop being pending. Never cleared: a reference carries a UUID, so
+        // one that leaves the selection never comes back.
+        this._uploaded = new Set();
         // Like the other scalar widgets, hold the validation message back until
         // the user touches the field (a pick or a removal) or showErrors() forces
         // it, so an untouched required field is not born red.
@@ -386,6 +422,31 @@ export class FileWidget extends Widget {
         }
 
         return this._refs.length > 0 ? this._refs[0] : null;
+    }
+
+    uploads() {
+        // Only a local pick fills _files, and _refs runs parallel to it, so the
+        // pair is already here. A current reference — planted by setValue, the
+        // host's own truth — has no File behind it and is never pending.
+        if (this._current !== null) {
+            return [];
+        }
+
+        const pending = [];
+
+        for (const [index, reference] of this._refs.entries()) {
+            if (this._uploaded.has(reference)) {
+                continue;
+            }
+
+            pending.push({
+                reference,
+                file: this._files[index],
+                complete: () => { this._uploaded.add(reference); },
+            });
+        }
+
+        return pending;
     }
 
     isEmpty() {
@@ -615,7 +676,7 @@ export class FileWidget extends Widget {
             this._invalid = false;
 
             const refs = matched.map(
-                (extension) => `${globalThis.crypto.randomUUID()}${extension}`);
+                (extension, i) => mintFileReference(chosen[i].name, extension));
 
             if (this.multiple && append) {
                 this._files = [...this._files, ...chosen];

@@ -1,5 +1,9 @@
 # pytypehintweb
 
+[![PyPI version](https://img.shields.io/pypi/v/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)
+[![Python](https://img.shields.io/pypi/pyversions/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)
+[![License](https://img.shields.io/pypi/l/pytypehintweb.svg)](LICENSE)
+
 Python schemas in. Portable form plans and browser widgets out.
 
 `pytypehintweb` is a framework-free browser form layer for

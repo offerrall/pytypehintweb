@@ -454,7 +454,12 @@ error and always ready, and has no validation message. `setValue()` takes only
 `true` or `false` — `null` or a string throws.
 
 `FileWidget` mints its value **locally**: when the user picks a file it generates
-a reference — a UUID plus the file's lowercased extension — and that is `value()`.
+a reference — the file's own name compressed to bare ASCII (its first 15
+characters at most), a UUID, and the file's lowercased extension, as in
+`informe-anual-<uuid>.pdf` — and that is `value()`. The name is a readable label
+only; uniqueness lives entirely in the UUID, so two picks of the same name mint
+two distinct references, and a name that keeps nothing (no ASCII survives the
+compression) mints the bare `<uuid>.pdf`.
 A `multiple` node (from `list[File]`) takes several files at once, mints one
 reference each, and `value()` is the array (`files()` gives the raw `File`s,
 `file()` the first); `minFiles`/`maxFiles` bound the count. A single node makes
@@ -544,7 +549,8 @@ receive the normalized value explicitly, so the two never collide.
 
 Some values are complete in the browser but only *promised* until something
 outside it acts. A file is the first: `FileWidget` mints a reference the instant
-the user picks a file (a UUID plus the extension), so `value()` and `read()` carry
+the user picks a file (the slugged name, a UUID and the extension), so `value()`
+and `read()` carry
 it immediately — but the bytes are not stored until the host uploads them.
 
 The cycle belongs to the host. On change it pairs each chosen file with the

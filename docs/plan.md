@@ -744,7 +744,8 @@ Invariants:
 
 Required: `kind`, `options`. `IsPathFile` on a `str` produces a `file` node. Its
 value is a reference string the browser widget **generates locally** when the
-user picks a file — a UUID plus the file's lowercased extension.
+user picks a file — the file's name compressed to bare ASCII (15 characters at
+most), a UUID, and the file's lowercased extension.
 
 ```json
 {
