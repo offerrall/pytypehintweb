@@ -49,9 +49,8 @@ _NO_PLACEHOLDER = (
 
 
 def _reject_doubled_braces(name: str, text: str) -> None:
-    # "{{value}}" and "}}" are not an escaped literal brace here: templates take
-    # only bare {value} / {current} / {total} placeholders. Name the real cause
-    # rather than reporting a vaguer "unbalanced braces".
+    # Templates take only bare {value} / {current} / {total}, so a doubled brace
+    # is not an escape. Name that cause instead of "unbalanced braces".
     if "{{" in text or "}}" in text:
         raise TypeError(
             f"WebConfig.{name} contains an invalid or escaped placeholder form "
@@ -149,8 +148,7 @@ class WebConfig:
                 # A label carrying the chosen file's name in its one {value}.
                 _check_template(f.name, value, needs_value=True)
             elif f.name in _NO_PLACEHOLDER:
-                # These are button/accessible labels: plain, non-empty text with
-                # no placeholders the widget could not fill.
+                # Button and accessible labels: plain, non-empty text.
                 if value == "":
                     raise TypeError(f"WebConfig.{f.name} must not be empty")
                 _check_template(f.name, value, needs_value=False)
@@ -165,22 +163,17 @@ WRAPPED = "wrapped"
 
 _FLOAT_UNSUPPORTED = ("slider",)
 
-# On a file field (a Str carrying IsPathFile) the other Str atoms describe a text
-# box and have no meaning on a file control, so any of them alongside IsPathFile
-# is deferred until a real case asks for it. The core allows the combination; the
-# adapter, like Float.slider, simply does not emit it yet.
+# The other Str atoms describe a text box and mean nothing on a file control.
+# The core allows the combination; the adapter, like Float.slider, defers it.
 _FILE_UNSUPPORTED = ("min", "max", "pattern", "choices", "is_password", "rows",
                      "placeholder")
 
-# A JSON number carries no evidence of whether it was an int or a float; on the
-# wire 3 and 3.0 are the same token. Grouping union branches by this sentinel
-# instead of by Python type makes int and float collide, so both travel wrapped
-# with a $type the browser can round-trip. See docs/plan.md (Union transport).
+# On the wire 3 and 3.0 are the same token, so grouping union branches by these
+# sentinels rather than by Python type makes int and float collide — and str,
+# date, time and enum names collide the same way as JSON strings. A collision
+# sends every branch in the group wrapped with a $type the browser can
+# round-trip. See docs/plan.md (Union transport).
 _JSON_NUMBER = "number"
-
-# str, date and time all travel as a JSON string (date and time as ISO text), so
-# they collide on the wire the same way int and float do. Any union mixing two of
-# them wraps every string branch with a $type the browser can round-trip.
 _JSON_STRING = "string"
 
 _UNPORTABLE_ESCAPES = "dDwWsSbBAZzG"
@@ -347,10 +340,9 @@ def _pattern_reason(pattern: str) -> str | None:
             if reason is not None:
                 return reason
 
-            # Track the group kind so a quantifier on a lookahead can be
-            # rejected when the group closes. After _group_reason(), a "(?"
-            # is a lookahead or a non-capturing group; anything else opens a
-            # capturing group.
+            # Track the kind so a quantifier on a lookahead is rejected when the
+            # group closes. Past _group_reason(), "(?" is a lookahead or a
+            # non-capturing group and anything else is a capturing one.
             if pattern.startswith(_LOOKAHEAD_PREFIXES, index):
                 groups.append("lookahead")
                 index += 3
@@ -411,18 +403,14 @@ def _check_javascript_pattern(pattern: str, path: str) -> None:
 
 
 def _transport_group(shape):
-    # The transport type a value arrives as, which is what decides collisions in
-    # a union. A dataclass is a dict and keeps that identity so the inline form
-    # can route it by an in-object $type. int and float share one JSON number
-    # token; str, date and time share one JSON string token; each shared group
-    # goes wrapped. A number and a string stay distinct, so str | int is
-    # untouched, while str | date and date | time collide.
+    # What decides collisions in a union. A dataclass stays a dict so the inline
+    # form can route it by an in-object $type. A number and a string never
+    # collide, so str | int is untouched while str | date and date | time are not.
     if type(shape) is Struct:
         return dict
 
-    # An enum member travels as its name, a JSON string, so it joins the string
-    # group and collides with str, date, time and other enums the same way. Its
-    # pytype is the enum class, not str, so this is decided by shape, not pytype.
+    # An enum member travels as its name, so it joins the string group. Its
+    # pytype is the enum class, so this is decided by shape, not pytype.
     if type(shape) is EnumShape:
         return _JSON_STRING
 
@@ -486,10 +474,10 @@ def _bound(bound, delta, path: str, what: str):
 
 
 def _inclusive_length(bound, path: str, what: str):
-    # String and list length bounds are inclusive in the browser contract. The
-    # core rejects exclusive length bounds, so a compiled schema never carries
-    # one; the adapter still refuses one defensively rather than reading .value
-    # and silently dropping .exclusive, which would weaken the bound.
+    # Length bounds are inclusive in the browser contract. The core rejects an
+    # exclusive one, so a compiled schema never carries it; refusing it here too
+    # beats reading .value and silently dropping .exclusive, which would weaken
+    # the bound.
     if bound is None:
         return None
 
@@ -568,9 +556,8 @@ def _is_multiple_file_shape(shape) -> bool:
 
 
 def _contains_file(shapes) -> bool:
-    # A file reached anywhere below a list item that is not a bare list[File] — an
-    # optional item, a union, a nested list, a dataclass field. These combinations
-    # are deferred until a real case asks for them.
+    # A file below a list item that is not a bare list[File] — an optional item,
+    # a union, a nested list, a struct field. Those combinations are deferred.
     for shape in shapes:
         if _is_file_shape(shape):
             return True
@@ -583,21 +570,15 @@ def _contains_file(shapes) -> bool:
 
 
 def _file_node(shape, config, path: str) -> dict:
-    # IsPathFile turns a Str into a file field. The value is a reference string the
-    # browser widget generates locally from the chosen file (its name slugged to
-    # bare ASCII, a UUID and its extension); the core certifies it only by
-    # extension (an honest-mistake filter
-    # over value.lower().endswith(ext), never a check that bytes exist). extensions
-    # is possibly empty (any file); it maps to the input's accept attribute. A file
-    # carries no default — its reference comes from the user's choice — so a
-    # default on a file field is rejected (see _field_node / _plain_value). Nothing
-    # about transport or decode() changes: a file field is a str on the wire.
+    # IsPathFile turns a Str into a file field, still a str on the wire. The
+    # value is a reference the browser widget mints locally from the chosen file;
+    # the core certifies it by extension alone, never that bytes exist. Empty
+    # extensions means any file. A reference comes from the user's choice, so a
+    # default on a file is rejected (see _field_node / _plain_value).
     #
-    # `multiple` is always present (false here, true for list[File]); minFiles /
-    # maxFiles are null on a single file and carry the list's Min / Max on a
-    # multiple one. currentLabel / currentRemoveLabel / currentReplaceLabel drive
-    # the "current file" display setValue() puts the widget into (see
-    # docs/javascript.md).
+    # minFiles / maxFiles stay null here and carry the list's Min / Max on a
+    # multiple one. The current* labels drive the "current file" display
+    # setValue() puts the widget into (see docs/javascript.md).
     for name in _FILE_UNSUPPORTED:
         if getattr(shape, name) is not None:
             raise _error(
@@ -733,10 +714,9 @@ def _int_node(shape, config, path: str) -> dict:
                    if shape.multiple_of else None)
     step = _safe_int(shape.step.value, path, "Int.step") if shape.step else None
 
-    # An ordinary range whose bounds admit no multiple of multiple_of is already
-    # rejected by the core when it compiles the schema (Int.__post_init__:
-    # "no multiple of {m} in range"), so the adapter does not re-check it. The
-    # slider grid is the adapter's own concern and stays.
+    # A range admitting no multiple of multiple_of is already rejected by the
+    # core (Int.__post_init__), so it is not re-checked. The slider grid is the
+    # adapter's own concern and stays.
     if slider:
         _check_slider(minimum, maximum, step, multiple_of, path)
 
@@ -771,10 +751,8 @@ def _float_node(shape, config, path: str) -> dict:
     if choices is not None and placeholder is not None:
         _incompatible(path, "Float", "Choices", "Placeholder")
 
-    # No conversion: the core compares a float directly against its bound and its
-    # flag, and every finite double is representable in the browser, so the value
-    # travels as is with the exclusive flag beside it. The empty range the core
-    # rejects at compile time is never re-checked here.
+    # No conversion: a float has no next representable step, so the bound travels
+    # as is with its exclusive flag beside it, exactly as the core compares it.
     minimum = shape.min.value if shape.min else None
     maximum = shape.max.value if shape.max else None
 
@@ -801,10 +779,9 @@ def _float_node(shape, config, path: str) -> dict:
 
 
 def _date_bound(bound, delta_days: int):
-    # Like Int, an exclusive date bound converts to the neighbouring inclusive
-    # one: strictly-after becomes on-or-after the next day, and symmetrically for
-    # max. The core rejects an exclusive bound at the calendar edge, so the
-    # neighbour always exists by the time a compiled schema reaches here.
+    # Like Int, an exclusive bound converts to the neighbouring inclusive one:
+    # strictly-after becomes on-or-after the next day. The core rejects a bound
+    # at the calendar edge, so that neighbour always exists.
     if bound is None:
         return None
 
@@ -846,11 +823,9 @@ def _time_node(shape, config, path: str) -> dict:
     if choices is not None and placeholder is not None:
         _incompatible(path, "Time", "Choices", "Placeholder")
 
-    # Time carries the exclusive flag like Float: the core compares directly with
-    # no conversion (there is no natural ±1 for a clock), so the bound travels as
-    # canonical ISO text with its flag beside it and the widget compares
-    # lexicographically. The empty range the core rejects at compile time — which
-    # includes equal bounds with an exclusive side — is never re-checked here.
+    # Time carries the exclusive flag like Float: there is no natural ±1 for a
+    # clock, so the bound travels as canonical ISO text with its flag beside it
+    # and the widget compares lexicographically.
     return {
         "kind": "time",
         "options": {
@@ -868,17 +843,13 @@ def _time_node(shape, config, path: str) -> dict:
 
 
 def _enum_node(shape, config, path: str) -> dict:
-    # An enum is a closed set of members. Each travels as its name (.name), in
-    # declaration order — list(cls) yields only canonical members, so an alias
-    # never appears twice. The name, never the value, is the transport: a value
-    # can be anything, repeat across aliases, or not serialize.
+    # The name is the transport, never the value, which can be anything, repeat
+    # across aliases or not serialize. Iterating the class yields only canonical
+    # members in declaration order, so an alias never appears twice.
     #
-    # choices is always non-empty (the core rejects an empty enum). placeholder
-    # is always null: an enum is a closed select that always holds a value (the
-    # default or the first member), never empty, never in error, so there is
-    # nothing to prompt for; the key exists only for structural symmetry with the
-    # other scalars. labels is the reserved slot for member labels a future Extra
-    # vocabulary would supply; it is always null today. Extra is not interpreted.
+    # placeholder is always null: a closed select always holds a value, so there
+    # is nothing to prompt for, and the key exists only for symmetry with the
+    # other scalars. labels is the reserved slot for a future Extra vocabulary.
     return {
         "kind": "enum",
         "options": {
@@ -909,8 +880,8 @@ def _shape_node(shape, config, path: str) -> dict:
         return _time_node(shape, config, path)
 
     if type(shape) is Bool:
-        # Bool has no configurable atoms, so its node carries an empty options
-        # object: present and validated as an object, but with no keys.
+        # No configurable atoms, so options is present and validated as an
+        # object but carries no keys.
         return {"kind": "bool", "options": {}}
 
     if type(shape) is List:
@@ -962,12 +933,10 @@ def _shape_node(shape, config, path: str) -> dict:
 
 
 def _check_branches(shapes, path: str) -> None:
-    # option_id() is the wrapper $type the browser and decode() read to tell
-    # branches apart, so two branches sharing one are unroutable. Since core 0.0.5
-    # _check_discriminators rejects the collision the normal Field path can produce
-    # (homonym enums or dataclasses in a union) before a compiled schema reaches
-    # here; the adapter keeps this guard as defense in depth against future
-    # relaxations of that core rule and shapes assembled off the normal path.
+    # option_id() is the wrapper $type the browser and decode() route by, so two
+    # branches sharing one are unroutable. Core 0.0.5 already rejects the
+    # collision on the normal Field path; this stays as defense in depth for
+    # shapes assembled off it.
     seen = set()
 
     for shape in shapes:
@@ -1051,9 +1020,8 @@ def _branch_index(shapes, value, path: str) -> int:
 
 
 def _plain_value(shape, value, path: str):
-    # A file mints its reference from the user's choice, so it carries no default.
-    # Reaching one here means a default reached a file shape — directly, or nested
-    # in a list item, struct field or union branch — which is rejected.
+    # A file mints its reference from the user's choice, so a default reaching
+    # one — directly or nested in a list, struct or branch — is rejected.
     if _is_file_shape(shape):
         raise _error(
             path,
@@ -1074,13 +1042,11 @@ def _plain_value(shape, value, path: str):
         _check_slider_default(shape, safe, path)
         return safe
 
-    # A date/time default is a Python object; the plan is JSON, so it travels as
-    # canonical ISO text, the same form its bounds and choices take.
+    # The plan is JSON, so a date/time default travels as canonical ISO text and
+    # an enum member as its name — the transport their choices already take.
     if type(shape) is Date or type(shape) is Time:
         return value.isoformat()
 
-    # An enum default is a member certified by the core; it travels as its name,
-    # the same transport its choices take.
     if type(shape) is EnumShape:
         return value.name
 
@@ -1088,10 +1054,9 @@ def _plain_value(shape, value, path: str):
 
 
 def _check_slider_default(shape, value: int, path: str) -> None:
-    # The core validates a default against min, max and multiple_of, but not
-    # against the slider's Step grid. A slider default that cannot land on a
-    # step position is off the converted browser contract, so the adapter
-    # rejects it before emitting the plan (the browser would reject it too).
+    # The core validates a default against min, max and multiple_of but not
+    # against the slider's Step grid, so a default no step position can reach is
+    # rejected here rather than left for the browser.
     if shape.slider is None or shape.step is None:
         return
 
@@ -1134,11 +1099,10 @@ def _field_node(field, config, path: str) -> dict:
     has_default = field.default is not MISSING
     where = f"{path}.{field.name}"
 
-    # A lone file field carries no default — single or multiple (list[File]), not
-    # even the None a switched-off optional would use, nor an empty list. Catch it
-    # here because _plain_value never sees that None (it returns early) and never
-    # descends into an empty list. A file as one branch of a wider union is left to
-    # _plain_value, which rejects only a default that lands on the file branch.
+    # A lone file field takes no default at all, not even the None of a
+    # switched-off optional or an empty list. Caught here because _plain_value
+    # returns early on None and never descends into an empty list. A file as one
+    # branch of a wider union is left to _plain_value.
     real = [s for s in field.shape if type(s) is not NoneShape]
     if (has_default and len(real) == 1
             and (_is_file_shape(real[0]) or _is_multiple_file_shape(real[0]))):

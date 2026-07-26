@@ -27,9 +27,9 @@ def _load():
 def _url(host: str, port: int) -> str:
     resolved = BROWSER_HOSTS.get(host, host)
 
-    # An IPv6 literal must be bracketed in a URL authority, or the colons
-    # collide with the port separator. Wildcard binds resolve above to an
-    # already-bracketed loopback, so bracket only a bare colon-bearing host.
+    # An IPv6 literal needs brackets in a URL authority or its colons collide
+    # with the port separator. A wildcard bind resolved above to an already
+    # bracketed loopback, so only a bare colon-bearing host is left to wrap.
     if ":" in resolved and not resolved.startswith("["):
         resolved = f"[{resolved}]"
 

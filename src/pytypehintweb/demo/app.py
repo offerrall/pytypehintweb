@@ -605,10 +605,9 @@ async def build(form_id: str, data: dict):
         return JSONResponse({"ok": False, "error": "Unknown form"},
                             status_code=404, headers=NO_CACHE)
 
-    # Demo infrastructure only. A real host defines its own error policy; here
-    # any build failure becomes a readable envelope instead of an opaque 500.
-    # `except Exception` still lets KeyboardInterrupt, SystemExit and
-    # GeneratorExit (BaseException) propagate.
+    # Demo infrastructure only: a real host defines its own error policy. Here
+    # any build failure becomes a readable envelope instead of an opaque 500,
+    # while `except Exception` still lets BaseException propagate.
     try:
         resolved = schema.build(decode(schema, data))
         return JSONResponse({"ok": True, "built": repr(resolved)},
@@ -624,11 +623,9 @@ UPLOADS = Path(tempfile.gettempdir()) / "pytypehintweb-demo-uploads"
 @app.post("/upload")
 async def upload(reference: str = Form(...), file: UploadFile = File(...)):
     # Demo infrastructure only: a toy channel standing in for the host's own. The
-    # browser widget already minted the reference; the host stores the bytes
-    # labelled with it. A real host owns the channel, storage, size limits, auth
-    # and naming, and decides how far it trusts a client-supplied reference — here
-    # `Path(...).name` keeps it from escaping the upload directory. The library
-    # never checks that bytes exist behind a reference.
+    # widget already minted the reference; the host stores the bytes labelled
+    # with it. A real host owns storage, size limits, auth and how far it trusts
+    # a client-supplied reference — `Path(...).name` is all this one does.
     UPLOADS.mkdir(parents=True, exist_ok=True)
     (UPLOADS / Path(reference).name).write_bytes(await file.read())
 

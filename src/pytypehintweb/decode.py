@@ -5,37 +5,28 @@ from pytypehint import (
     Date, EnumShape, Float, Int, List, NoneShape, Signature, Str, Struct, Time,
 )
 
-# The reserved keys of the discriminated transport, mirrored from the core. A
-# field can never carry them: field names must be identifiers, and neither is.
+# Reserved keys of the discriminated transport, mirrored from the core. A field
+# can never carry them: field names must be identifiers, and neither is.
 _TYPE = "$type"
 _VALUE = "$value"
 
 
 def decode(schema, data, *,
            file_resolver: Callable[[str], str] | None = None):
-    # Prepare a JSON-parsed transport object for schema.build(). Some values the
-    # transport cannot express by the exact type the core demands: JSON and the
-    # browser collapse 3.0 to 3, so an int arrives where a float is wanted; and a
-    # date or a time travels as an ISO string where a date/time object is wanted.
-    # decode walks the schema shapes and, guided by the shape at each path,
-    # coerces int -> float and str -> date/time wherever that shape is the only
-    # possible reading. Everything else passes through untouched.
+    # Prepare a JSON-parsed transport object for schema.build(). JSON collapses
+    # 3.0 to 3 and carries a date or time as an ISO string, so decode walks the
+    # schema and coerces int -> float and str -> date/time wherever the shape is
+    # the only possible reading. Everything else passes through untouched.
     #
-    # It never guesses from a value's content: a string is turned into a date only
-    # because the shape (or an explicit $type) says so, never because it "looks
-    # like" one. decode prepares, it does not validate — a value the core will
-    # reject passes through unchanged so build() reports it with its own error.
-    # The returned dict is always new; the input is never mutated.
+    # The shape decides, never the content: a str that looks like a date stays a
+    # str unless the shape says otherwise. decode prepares, it does not validate;
+    # a value the core will reject travels unchanged so build() reports it. The
+    # returned dict is always new.
     #
-    # file_resolver is the one place a host can put its own reading of a value:
-    # Callable[[str], str], called with the reference at every file node the walk
-    # reaches — directly, in a list[File], inside a struct, a list or the selected
-    # union branch — and its return value continues down the pipeline. Without it
-    # a reference travels untouched, exactly as before. The library stays
-    # storage-agnostic: it knows only that the value belongs to a file node, while
-    # the host decides whether that reference becomes a local path, an object-store
-    # key or any other string. An exception the resolver raises propagates
-    # unchanged: it is the host's error, not decode's to name or swallow.
+    # file_resolver, when given, is called with the reference at every file node
+    # reached and its return value continues down the pipeline, so a host can map
+    # a reference to a path or an object-store key without decode knowing what
+    # storage means. An exception it raises propagates unchanged.
     return _decode_fields(_fields_of(schema), data, file_resolver)
 
 
@@ -52,9 +43,8 @@ def _fields_of(schema):
 
 
 def _transport_type(shape):
-    # The runtime type a value arrives as: every dataclass arrives as a dict,
-    # every other shape as its own pytype. This is the grouping the core uses to
-    # decide whether a wrapper is required.
+    # The runtime type a value arrives as — a dataclass as a dict, anything else
+    # as its pytype. This is the grouping the core uses to decide on a wrapper.
     return dict if type(shape) is Struct else shape.pytype
 
 
@@ -76,8 +66,7 @@ def _decode_fields(fields, data, resolver):
     for key, value in data.items():
         field = _field_by_name(fields, key)
 
-        # An unknown key is not decode's to interpret; it travels intact and
-        # build() rejects it.
+        # An unknown key travels intact; rejecting it is build()'s job.
         result[key] = (value if field is None
                        else _decode_options(field.shape, value, resolver))
 
@@ -85,10 +74,9 @@ def _decode_fields(fields, data, resolver):
 
 
 def _decode_options(shapes, value, resolver):
-    # A None — an absent optional, a switched-off toggle — is a value, not a path
-    # to descend, so nothing below (the file resolver included) ever sees it. A
-    # field the transport does not carry at all is never reached: it takes its
-    # default.
+    # A None is a value, not a path to descend, so nothing below it — the file
+    # resolver included — ever sees it. A field the transport omits entirely is
+    # never reached at all: it takes its default.
     if value is None:
         return None
 
@@ -121,9 +109,8 @@ def _to_time(value):
 
 def _to_enum_member(shape, value):
     try:
-        # cls[name] resolves through __members__, so an alias name returns its
-        # canonical member. A name that does not exist raises KeyError: pass it
-        # intact, build() rejects it as the wrong type. decode never validates.
+        # cls[name] resolves through __members__, so an alias returns its
+        # canonical member. An unknown name passes intact for build() to reject.
         return shape.cls[value]
     except KeyError:
         return value
@@ -134,25 +121,17 @@ def _is_file(shape):
 
 
 def _decode_string(shapes, value, resolver):
-    # A file node is the one string reading a host may want to transform. It is a
-    # Str carrying IsPathFile, so it is decided by the shape like every other
-    # conversion here — never by what the string looks like. The reading has to be
-    # unambiguous: a lone Str that is a file. Any other Str competing for the same
-    # path (which the plan layer already refuses to route) leaves the reference
-    # untouched rather than guessing.
+    # The resolver only fires on an unambiguous file reading: a lone Str carrying
+    # IsPathFile. Another Str competing for the path leaves the reference alone
+    # rather than guessing. Whatever the host returns continues as the value.
     strings = [s for s in shapes if type(s) is Str]
 
     if resolver is not None and len(strings) == 1 and _is_file(strings[0]):
-        # Whatever the host returns continues down the pipeline as the value; decode
-        # neither inspects nor validates it, and an exception here is the host's.
         return resolver(value)
 
-    # A Str reading keeps a string a string: only convert where a single Date,
-    # Time or enum shape is the unambiguous reading and no Str competes. The
-    # content of the string is never inspected — a str that "looks like" a date
-    # stays a str, and a name is turned into a member only because the shape says
-    # so. When more than one string-transport shape reads the path (date | time,
-    # date | Estado), the reading is ambiguous, so decode leaves it for the core.
+    # A Str reading keeps a string a string. Otherwise convert only where a
+    # single Date, Time or enum shape is the one reading; two of them competing
+    # (date | time, date | Estado) is ambiguous, so it goes to the core intact.
     if strings:
         return value
 
@@ -176,15 +155,14 @@ def _decode_string(shapes, value, resolver):
 
 
 def _decode_scalar(shapes, value):
-    # bool is a subtype of int in Python, but `type(value) is int` already
-    # excludes it: a JSON true/false is never a number here.
+    # `type(value) is int` excludes bool, so a JSON true/false is never a number
+    # here despite bool subclassing int.
     if type(value) is int:
         has_float = any(type(s) is Float for s in shapes)
         has_int = any(type(s) is Int for s in shapes)
 
-        # Coerce only where Float is the single numeric reading. An Int in the
-        # same position (int | float) makes a bare number ambiguous, so decode
-        # leaves it for the core to route by exact type.
+        # Coerce only where Float is the single numeric reading; an Int in the
+        # same position (int | float) is ambiguous and the core routes it.
         if has_float and not has_int:
             return float(value)
 
@@ -194,8 +172,8 @@ def _decode_scalar(shapes, value):
 def _decode_list(shapes, value, resolver):
     lists = [s for s in shapes if type(s) is List]
 
-    # A bare list only reaches here when a single List branch reads the path; a
-    # union of lists collides on the transport type and travels wrapped instead.
+    # A bare list only reaches here with a single List branch; a union of lists
+    # collides on the transport type and travels wrapped instead.
     if len(lists) == 1:
         return [_decode_options(lists[0].item, item, resolver)
                 for item in value]
@@ -204,8 +182,7 @@ def _decode_list(shapes, value, resolver):
 
 
 def _decode_dict(shapes, value, resolver):
-    # $value is the reserved payload key of the discriminated wrapper; a
-    # dataclass can never carry it, so it tells a wrapper from an inline struct.
+    # A dataclass can never carry $value, so it tells a wrapper from a struct.
     if _VALUE in value:
         return _decode_wrapped(shapes, value, resolver)
 
@@ -216,19 +193,15 @@ def _decode_dict(shapes, value, resolver):
 
 
 def _decode_wrapped(shapes, value, resolver):
-    # A wrapped payload is exactly {$type, $value} — no missing key, no extra
-    # key. A dict that only resembles one (a missing $value, an unexpected key,
-    # an unknown discriminator, or a wrapper where the schema never asks for one)
-    # is malformed transport, not decode's to repair: it travels intact so
-    # build() reports it. The exact-set check keeps an explicit null payload
-    # ({"$type": t, "$value": null}) distinct from an absent $value — the routing
-    # in _decode_dict never reaches here without $value, and value[_VALUE] then
-    # reads the real payload rather than conflating null with absence.
+    # A wrapped payload is exactly {$type, $value}: anything that only resembles
+    # one is malformed transport and travels intact for build() to report. The
+    # exact-set check also keeps an explicit null payload distinct from an
+    # absent $value, so value[_VALUE] below reads a real payload.
     if set(value) != {_TYPE, _VALUE}:
         return value
 
-    # The wrapper is the wire format of a union. A single-branch path never
-    # travels wrapped, so a wrapper there is malformed, not a value to unwrap.
+    # The wrapper is the wire format of a union, so a single-branch path never
+    # travels wrapped: a wrapper there is malformed, not a value to unwrap.
     branches = [s for s in shapes if type(s) is not NoneShape]
 
     if len(branches) < 2:
@@ -246,12 +219,10 @@ def _decode_wrapped(shapes, value, resolver):
 
     inner = _decode_options((selected,), value[_VALUE], resolver)
 
-    # The wrapper is the adapter's wire format. The core keeps it only where it
-    # sees a genuine collision — several options sharing one runtime type. int
-    # and float share a JSON number but not a Python type, so the core routes
-    # them bare: decode consumes the wrapper, turning $type into the real type
-    # distinction the coerced payload already answers. Where the core does keep
-    # the wrapper (list | list, ...), decode keeps it and only prepares $value.
+    # The core only keeps the wrapper where several options share one runtime
+    # type. int and float share a JSON number but not a Python type, so it
+    # routes them bare and decode consumes the wrapper — the coerced payload
+    # already carries the distinction. Otherwise the wrapper stays.
     group = [s for s in branches
              if _transport_type(s) == _transport_type(selected)]
 
