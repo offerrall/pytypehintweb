@@ -71,6 +71,23 @@ point. The key the phone hands the user was the one the widget rejected, and
 reaching a point meant switching keyboards. On a desktop the problem is invisible
 because the point is typed without thinking.
 
+A time field now completes the seconds a picker does not offer. The `time` node
+asks its control for `step=1`, which opens the seconds field on a desktop picker
+and made `HH:MM:SS` the value the widget could count on. iOS ignores the request:
+its wheel picker has hours and minutes only and reports `HH:MM`, so on an iPhone
+every time a user picked read as invalid and no form carrying one could be sent.
+Whole minutes are inside the domain the core admits, so `TimeWidget` now reads a
+well-formed, in-range `HH:MM` as `HH:MM:00` instead of rejecting it.
+
+The completion is deliberately narrow. Only a value that is already a whole,
+in-range `HH:MM` is completed; `12:3`, `24:00`, `12:60` and a stray fraction stay
+exactly as the control reported them and stay invalid, so nothing malformed is
+repaired into something plausible. A control that does report seconds is left
+untouched, the widget never rewrites the text its control shows, and `setValue()`
+is unchanged — it still demands the canonical `HH:MM:SS`. Bounds are compared
+after completion, so an exclusive `09:00:00` still rejects a picked `09:00`, and
+`read()` transports whole seconds exactly as before.
+
 
 ## [0.0.1] - 2026-07-22
 

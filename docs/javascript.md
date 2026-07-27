@@ -534,8 +534,13 @@ shared with the plan validator, so a manual plan and a directly built widget are
 held to exactly the guarantee `pytypehint` already gives generated plans by
 starting from real `datetime.date` objects. A date bound is inclusive (the adapter converted any
 exclusive one by ±1 day); a time bound keeps its exclusive flag and the `time`
-control opens its seconds field (`step=1`). Turning the ISO string back into a
-`date`/`time` object is [`decode()`](python.md#decode)'s job, not the widget's.
+control asks for its seconds field (`step=1`). Where a platform ignores that ask
+and reports whole minutes — iOS, whose wheel picker has no seconds — `TimeWidget`
+reads a well-formed, in-range `HH:MM` as `HH:MM:00`, so the value it returns is
+always canonical. It completes nothing else, never rewrites the control's own
+text, and `setValue()` still requires the full `HH:MM:SS`. Turning the ISO string
+back into a `date`/`time` object is [`decode()`](python.md#decode)'s job, not the
+widget's.
 
 A `StrWidget` whose `pattern` is exactly `COLOR_PATTERN` (exported from
 `inputs.js`, the `#[0-9a-fA-F]{6}` string the `Color` alias emits) mounts a

@@ -13,6 +13,8 @@ export const COLOR_PATTERN = "#[0-9a-fA-F]{6}";
 const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 const isIsoTime = (value) => ISO_TIME.test(value);
 
+const ISO_MINUTES = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const FLOAT = /^-?\d+(\.\d+)?$/;
 
 function isWritableFloat(value) {
@@ -1489,8 +1491,14 @@ class IsoInput extends Widget {
         return this.input;
     }
 
+    _text() {
+        return this.input.value;
+    }
+
     value() {
-        return this.input.value === "" ? null : this.input.value;
+        const text = this._text();
+
+        return text === "" ? null : text;
     }
 
     isEmpty() {
@@ -1514,7 +1522,7 @@ class IsoInput extends Widget {
     }
 
     error() {
-        const value = this.input.value;
+        const value = this._text();
 
         if (value === "") {
             return null;
@@ -1592,5 +1600,11 @@ export class TimeWidget extends IsoInput {
             min, max, minExclusive, maxExclusive, step: 1,
             placeholder, invalidMessage, minMessage, maxMessage, value,
         });
+    }
+
+    _text() {
+        const raw = this.input.value;
+
+        return ISO_MINUTES.test(raw) ? `${raw}:00` : raw;
     }
 }

@@ -181,6 +181,108 @@ test("setValue accepts every valid HH:MM:SS, including the endpoints", () => {
 });
 
 
+// --- a picker that offers no seconds ----------------------------------------
+
+// The node asks for step=1, which opens the seconds field on a desktop picker.
+// iOS ignores it: its wheel picker has hours and minutes only and reports
+// "HH:MM". Whole minutes are inside the domain, so the widget completes them
+// rather than reading a perfectly chosen time as invalid.
+test("a control that reports only HH:MM reads as whole seconds", () => {
+    const widget = new TimeWidget();
+
+    for (const [raw, value] of [["12:30", "12:30:00"], ["00:00", "00:00:00"],
+                                ["23:59", "23:59:00"], ["09:05", "09:05:00"]]) {
+        typeInto(widget, raw);
+        assert.equal(widget.value(), value, `${raw} should read as ${value}`);
+        assert.equal(widget.hasError(), false, `${raw} should be valid`);
+    }
+});
+
+
+test("completing the seconds never rewrites what the control shows", () => {
+    const widget = new TimeWidget();
+
+    typeInto(widget, "12:30");
+
+    assert.equal(widget.input.value, "12:30");
+    assert.equal(widget.isEmpty(), false);
+});
+
+
+test("a control that does report seconds is left exactly as it is", () => {
+    const widget = new TimeWidget();
+
+    typeInto(widget, "12:30:45");
+    assert.equal(widget.value(), "12:30:45");
+
+    typeInto(widget, "12:30:00");
+    assert.equal(widget.value(), "12:30:00");
+});
+
+
+test("an HH:MM value is compared against its bounds once completed", () => {
+    const widget = new TimeWidget({ min: "09:00:00", max: "17:00:00" });
+
+    typeInto(widget, "08:59");
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.error(), "Must be at or after 09:00:00");
+
+    typeInto(widget, "09:00");
+    assert.equal(widget.hasError(), false);
+
+    typeInto(widget, "17:00");
+    assert.equal(widget.hasError(), false);
+
+    typeInto(widget, "17:01");
+    assert.equal(widget.error(), "Must be at or before 17:00:00");
+});
+
+
+test("an exclusive bound still rejects the boundary reached as HH:MM", () => {
+    const widget = new TimeWidget({ min: "09:00:00", minExclusive: true });
+
+    typeInto(widget, "09:00");
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.error(), "Must be at or after 09:00:00");
+});
+
+
+test("only a whole, in-range HH:MM is completed; nothing else is", () => {
+    const widget = new TimeWidget();
+
+    for (const bad of ["12:3", "1:30", "24:00", "12:60", "12:30:", "12h30",
+                       "12:30:00.5", "12:30:60"]) {
+        typeInto(widget, bad);
+        assert.equal(widget.value(), bad, `${bad} should read back unchanged`);
+        assert.equal(widget.hasError(), true, `${bad} should stay invalid`);
+        assert.equal(widget.error(), "Enter a valid time");
+    }
+});
+
+
+test("an HH:MM time transports as whole seconds through a compiled form", () => {
+    const form = compileForm({
+        kind: "form",
+        name: "f",
+        fields: [{ name: "start", node: { kind: "time" } }],
+    });
+
+    typeInto(form.fields[0].widget.widget, "12:30");
+
+    assert.equal(form.isReady(), true);
+    assert.equal(form.read().start, "12:30:00");
+});
+
+
+test("a date control is untouched by the time completion", () => {
+    const widget = new DateWidget();
+
+    typeInto(widget, "2026-07");
+    assert.equal(widget.value(), "2026-07");
+    assert.equal(widget.hasError(), true);
+});
+
+
 // --- in a compiled form -----------------------------------------------------
 
 test("a date default mounts prefilled and ready", () => {

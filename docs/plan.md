@@ -662,8 +662,15 @@ core admits, so there is never a sub-second fraction. These forms are fixed-widt
 and zero-padded, so **a plain lexicographic string comparison orders them
 correctly** — this is the invariant the widget's bound checks rely on.
 `"09:05:00" < "14:30:00"` as strings because the padding makes the string order
-match the clock order. A native time picker with `step=1` matches this domain
-exactly, keeping every value at second precision.
+match the clock order. A native time picker asked for `step=1` matches this
+domain exactly, keeping every value at second precision — except where the
+platform ignores the request: iOS offers a wheel picker with hours and minutes
+only and reports `HH:MM`. Whole minutes are inside the domain, so `TimeWidget`
+completes such a value to `HH:MM:00` when reading it, rather than calling a
+perfectly chosen time invalid. Only a well-formed, in-range `HH:MM` is completed;
+anything else stays exactly as the control reported it and remains invalid. The
+control's own text is never rewritten, and `setValue()` is unaffected — it still
+demands the canonical `HH:MM:SS`.
 
 Both halves of the definition are enforced, on both sides. In a generated plan
 the values start as real `datetime.date` / `datetime.time` objects, so
