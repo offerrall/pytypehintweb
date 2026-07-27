@@ -9,7 +9,7 @@ import { checkPlan } from "../../src/pytypehintweb/static/contract.js";
 import { normalizeNode } from "../../src/pytypehintweb/static/normalize.js";
 import { expandNode } from "./plan-fixture.mjs";
 import {
-    FloatChoiceWidget, FloatWidget,
+    FloatChoiceWidget, FloatWidget, IntWidget,
 } from "../../src/pytypehintweb/static/inputs.js";
 
 
@@ -41,9 +41,10 @@ test("well-formed float text parses to the exact number", () => {
 test("text outside the grammar reads as null and is invalid", () => {
     const widget = new FloatWidget();
 
-    // No scientific notation, no bare ".5" or "5.", no decimal comma.
-    for (const raw of ["1e3", ".5", "5.", "1,5", "abc", "3.1.4", "--3", "+3",
-                       "3 4", "Infinity", "NaN"]) {
+    // No scientific notation, no bare ".5" or "5.", one separator at most.
+    for (const raw of ["1e3", ".5", "5.", ",5", "5,", "abc", "3.1.4", "3,1,4",
+                       "1.000,5", "1,000.5", "--3", "+3", "3 4", "Infinity",
+                       "NaN"]) {
         typeInto(widget, raw);
         assert.equal(widget.input.value, raw, `${raw} was rewritten`);
         assert.equal(widget.value(), null, `${raw} should read as null`);
@@ -59,6 +60,85 @@ test("surrounding whitespace is trimmed for parsing but kept in the text", () =>
     typeInto(widget, "  3.5  ");
     assert.equal(widget.value(), 3.5);
     assert.equal(widget.input.value, "  3.5  ");
+});
+
+
+// --- the decimal comma reads exactly like the point -------------------------
+
+test("a decimal comma parses to the same number as a decimal point", () => {
+    const widget = new FloatWidget();
+
+    for (const [raw, value] of [["3,5", 3.5], ["-3,5", -3.5], ["-0,25", -0.25],
+                                ["12,0", 12], ["  2,5  ", 2.5]]) {
+        typeInto(widget, raw);
+        assert.equal(widget.value(), value, `${raw} should parse to ${value}`);
+        assert.equal(widget.number(), value);
+        assert.equal(widget.hasError(), false, `${raw} should be valid`);
+        assert.equal(widget.input.value, raw, `${raw} was rewritten`);
+    }
+});
+
+
+test("a comma is a decimal separator, never a thousands mark", () => {
+    const widget = new FloatWidget();
+
+    typeInto(widget, "1,000");
+    assert.equal(widget.value(), 1);
+});
+
+
+test("a comma-typed value is read through its bounds like a point", () => {
+    const widget = new FloatWidget({ min: 0, max: 10, maxExclusive: true });
+
+    typeInto(widget, "10,0");
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.error(), "Must be at most 10");
+
+    typeInto(widget, "9,5");
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.value(), 9.5);
+});
+
+
+test("a comma-typed magnitude still overflows to non-finite", () => {
+    const widget = new FloatWidget();
+
+    typeInto(widget, `${"9".repeat(400)},0`);
+    assert.equal(widget.value(), null);
+    assert.equal(widget.error(), "Must be a finite number");
+});
+
+
+test("a comma alone is invalid, not empty", () => {
+    const widget = new FloatWidget();
+
+    typeInto(widget, ",");
+    assert.equal(widget.isEmpty(), false);
+    assert.equal(widget.value(), null);
+    assert.equal(widget.error(), "Enter a valid number");
+});
+
+
+test("read() transports a comma-typed value as a plain number", () => {
+    const form = compileForm({
+        kind: "form",
+        name: "f",
+        fields: [{ name: "ratio", node: { kind: "float" } }],
+    });
+
+    typeInto(form.fields[0].widget.widget, "1,5");
+
+    assert.equal(form.read().ratio, 1.5);
+    assert.equal(typeof form.read().ratio, "number");
+});
+
+
+test("an int field still refuses a comma", () => {
+    const widget = new IntWidget();
+
+    typeInto(widget, "1,5");
+    assert.equal(widget.value(), null);
+    assert.equal(widget.hasError(), true);
 });
 
 

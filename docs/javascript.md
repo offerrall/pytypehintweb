@@ -373,8 +373,13 @@ action, not a silent correction.
 
 `FloatWidget` parses with the same honesty, against an explicit grammar:
 exactly `-?\d+(\.\d+)?` over the trimmed text — no scientific notation, no bare
-`.5` or `5.`, no decimal comma. Text outside the grammar reads as `null` and
-shows `invalidMessage`. A grammar-valid magnitude that overflows to `Infinity`
+`.5` or `5.`. A comma is accepted as the decimal separator and folded to a point
+before that grammar runs, so `1,5` and `1.5` are the same value and everything
+the grammar forbids stays forbidden: `1.000,5`, `3,1,4` and a lone `,` are all
+invalid, and `1,000` reads as `1`, never as a thousand. This is an input
+convenience only — the widget never rewrites what was typed, and `value()`,
+`read()` and the plan are always the plain number. Text outside the grammar
+reads as `null` and shows `invalidMessage`. A grammar-valid magnitude that overflows to `Infinity`
 also reads as `null` and shows `finiteMessage`; it is never transported, the
 float analogue of the unsafe integer. A bound is compared directly against the
 double with its exclusivity flag, exactly as the core does — there is no ±1

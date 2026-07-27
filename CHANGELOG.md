@@ -52,6 +52,25 @@ size budget's ceilings drop with it, keeping the same headroom as before. The
 demo page's inline script was stripped the same way, keeping only the four
 markers its tests use to extract helpers.
 
+A float field now accepts a comma as the decimal separator. The comma is folded
+to a point over the trimmed text before the parsing grammar runs, so `1,5` and
+`1.5` are the same value and every restriction the grammar already had survives
+untouched: one separator at most, so `1.000,5` and `3,1,4` stay invalid, as does
+a lone `,`, and `1,000` reads as `1` — a comma is never a thousands mark. An
+integer field is unaffected and still refuses it.
+
+This is an input convenience, not a contract change. The widget never rewrites
+what was typed, and `value()`, `read()` and the plan carry the plain number they
+always did, so nothing downstream — transport, `decode()` or the core — can tell
+which separator was used. It costs 19 bytes.
+
+The motivation is a mobile keyboard. A float control is a text input with
+`inputmode="decimal"`, which on iOS opens the system numeric keypad; on a device
+whose locale writes decimals with a comma, that keypad offers a comma and no
+point. The key the phone hands the user was the one the widget rejected, and
+reaching a point meant switching keyboards. On a desktop the problem is invisible
+because the point is typed without thinking.
+
 
 ## [0.0.1] - 2026-07-22
 

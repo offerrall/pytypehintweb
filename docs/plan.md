@@ -556,8 +556,10 @@ Invariants:
   property.
 
 The parsing grammar is exactly `-?\d+(\.\d+)?` over the trimmed text: no
-scientific notation, no bare `.5` or `5.`, no decimal comma. Text outside it
-shows `invalidMessage`. A grammar-valid magnitude that overflows to `Infinity`
+scientific notation, no bare `.5` or `5.`. A comma is folded to a point before
+the grammar runs, so it is accepted as the decimal separator under exactly the
+same restrictions — one separator at most, never a thousands mark. Text outside
+it shows `invalidMessage`. A grammar-valid magnitude that overflows to `Infinity`
 shows `finiteMessage` and reads as `null`; it is never transported, the float
 analogue of the integer's safe-range guard.
 

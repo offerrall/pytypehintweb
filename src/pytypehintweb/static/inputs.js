@@ -1342,7 +1342,7 @@ export class FloatWidget extends Widget {
     }
 
     _parse() {
-        const text = this.input.value.trim();
+        const text = this.input.value.trim().replace(/,/g, ".");
 
         if (text === "") {
             return { kind: "empty", value: null };
