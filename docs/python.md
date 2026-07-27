@@ -189,52 +189,139 @@ the first render with no "choose one" step.
 rather than a text box. Its value is a reference string the browser widget
 **generates locally** the moment the user picks a file — the file's name
 compressed to bare ASCII (15 characters at most), a UUID, and the file's
-lowercased extension. The library never interprets it beyond the **extension**:
-a lenient `value.lower().endswith(ext)` filter over the declared list, in the
-widget and in the core alike — a guard against honest mistakes, never a check
-that the reference resolves to bytes. The core never sees bytes, and nothing
-about the transport or `decode()` changes: a file field is a `str` on the wire.
+lowercased extension. The browser never interprets it beyond the **extension**:
+a lenient `value.lower().endswith(ext)` filter over the declared list — a guard
+against honest mistakes. Nothing about the transport changes: a file field is a
+`str` on the wire.
+
+**The reference is not a path, and the core wants a path.** Since
+`pytypehint 0.0.7`, `IsPathFile` certifies the file itself on the way in —
+extension, existence, regular file and byte size — so a reference the host never
+turned into real storage is refused by `build()`. Bridging the two is the host's
+job, and the seam the library gives it is `decode(..., file_resolver=...)`:
+
+```python
+prepared = decode(schema, body, file_resolver=lambda ref: str(UPLOADS / ref))
+resolved = schema.build(prepared)
+```
+
+Without a resolver the reference travels untouched and `build()` will reject it
+unless it happens to name a real file. See [`file_resolver`](#file_resolver) for
+the full walk it covers.
 
 | Annotation | Plan option |
 | --- | --- |
 | `IsPathFile(extensions=...)` | `extensions` — lowercase, dotted, possibly empty (any file), mapped to the input's `accept` |
+| `IsPathFile(min_size=...)` / `max_size=...` | **not emitted** — `TypeError` ("not supported yet") |
 | `list[Annotated[str, IsPathFile(...)]]` | one file node with `multiple: true`; the list's `Min`/`Max` become `minFiles`/`maxFiles` |
 
-**`list[File]` is one `multiple` file node**, not a list of file widgets: a single
-input that takes several files at once, minting one reference per file, with the
-list's `Min`/`Max` as file-count bounds. A file anywhere else inside a list — an
-optional item, a union, a nested list, a dataclass field — raises `TypeError`
-("not supported yet"), deferred until a real case asks for it.
+The byte-size bounds are deferred rather than dropped. The plan has no way to
+carry them and the widget has no way to show them, so a form would accept a file
+the core then refuses *after* the upload already happened. `plan_of()` refuses
+the plan instead, which is the honest answer until the widget checks `File.size`
+itself.
 
-A file field carries **no plan default**: a plan is a static artefact (cacheable,
-serialisable, hand-written) and a frozen reference in it is a promise nobody
-renews, so `plan_of()` rejects a default over `IsPathFile` while compiling —
-single or `list[File]` (even an empty list), and including the `None` a
-switched-off optional would use, whose off state is an `OptionalToggle` instead.
+**A file composes like any other node.** There is no rule about files in lists,
+in structs or in unions: a shape is representable when each of its nodes is, and
+the compiler recurses. Writing `File` where you would write `str` works at any
+depth, with or without a default:
+
+| Shape | Node |
+| --- | --- |
+| `Annotated[str, IsPathFile()]` | `file` |
+| `Annotated[str, IsPathFile()] \| None` | `file`, optional |
+| `list[Annotated[str, IsPathFile()]]` | one `file` node with `multiple: true` |
+| `list[Annotated[str, IsPathFile()] \| None]` | `list` of `optional` of `file` |
+| `list[Annotated[str, IsPathFile()] \| int]` | `list` of `choice` |
+| `list[list[Annotated[str, IsPathFile()]]]` | `list` of `multiple` `file` |
+| a dataclass with a file field | `object` containing a `file` |
+| a dataclass with a `list[File]` field | `object` containing a `multiple` `file` |
+| `list[SomeDataclassWithAFile]` | `list` of `object` |
+| a file as one branch of a union whose other branches are not strings | `choice` |
+
+**`list[File]` has one special case, and it is a shortcut, not a restriction.**
+A *bare* `list[File]` becomes a single `multiple` file node — one input that
+takes several files at once, minting one reference each, with the list's
+`Min`/`Max` as file-count bounds — because that is what a user expects from it.
+Any other list compiles its item recursively like any other list. This is also
+why `list[list[File]]` is a `list` whose rows are `multiple` file nodes: the
+shortcut applies at the inner level, and the outer list stays a list.
+
+### File defaults and prefills
+
+**A file default is an existing reference.** A single file takes a `str`, a
+`list[File]` takes a `list[str]`, and an optional file takes `None` for its off
+state. In the browser it is exactly what `FileWidget.setValue()` means — shown as
+the current file, transported back untouched, carrying no bytes, no local `File`
+and no upload — because `compileForm()` applies it *by calling* `setValue()`.
+
+There are two ways a reference can reach a form, and they have different
+guarantees. Keeping them apart is the whole story:
+
+**1. Strict: a default in the Python schema, including a prefill.** A prefill is
+a temporary default, so it takes the same road:
+
+```text
+value → schema default → pytypehint compiles → IsPathFile certifies
+      → plan_of() → plan → compileForm() → setValue()
+```
+
+`IsPathFile` certifies the value *before* a plan can exist: exactly `str`, the
+file exists, it is a regular file, the extension matches, and `min_size` /
+`max_size` hold when used. A default naming a file that is not there fails with
+`file does not exist`, and no plan is produced — which is the point, because it
+is what stops a form from showing a file nobody has. A `list[File]` default is
+certified element by element, and the list's `Min`/`Max` are checked too.
+
+For the core, "certified" means a real local file. So a host whose references are
+**not** local paths cannot pass one through a schema default.
+
+**2. Opaque: a reference applied at runtime.** That host uses the other road:
+
+```text
+widget.setValue("bucket/key.pdf")        → frontend state only, nothing certified
+form.read() → decode(..., file_resolver=…) → real path → schema.build()
+            → IsPathFile certifies here instead
+```
+
+`setValue()` certifies nothing by itself — it is frontend state. The guarantee
+arrives later, when the host resolves the reference and the core checks the path
+it resolved to. A reference that expired in between shows fine in the form and
+fails at `build()`, which is correct: the form and the storage are different
+layers.
+
+Both roads land the widget in the same observable state. Only the first one has
+been certified by the time the page renders.
 
 **A struct with an internal path round-trips through an edit form.** Create and
 edit are the same form: a host builds it from a `Struct` (`struct_of(User)`),
 `setValue()`s each field from an existing record — including the file field, whose
 string is an *existing* reference shown as the current file — the user edits what
-they edit, and `schema.build(decode(schema, form.read()))` returns the whole
-`User`. An untouched avatar comes back byte-identical to the reference it went in
-as; a replaced one as the fresh reference the new local choice minted; no bytes
-move for the files left alone. That is the counterpart to the rejected plan
-default: the current file is runtime truth the host sets fresh at mount, not a
-promise frozen into a static plan.
+they edit, and `schema.build(decode(schema, form.read(), file_resolver=...))`
+returns the whole `User`. An untouched avatar comes back as the same reference it
+went in as, byte-identical, and it is that reference the resolver is handed; a
+replaced one comes back as the fresh reference the new local choice minted; no
+bytes move for the files left alone. A plan default is the same thing declared
+one step earlier: `setValue()` plants the current file at mount, a default has
+the plan carry it, and the widget cannot tell the two apart because the default
+reaches it *through* `setValue()`.
 
-The reference is a local promise, not proof of storage. That a file's bytes are
-actually stored is the host's, with no net from the library: if it mints a
-reference and never uploads the bytes, `build()` accepts a string that points at
-nothing. FuncToWeb (or any wrapper) must ensure it internally if it cares; see
+**Storage is still the host's, and now it is checked.** The library mints and
+transports a reference and knows nothing about where bytes live. What changed
+with `pytypehint 0.0.7` is that the promise is no longer taken on trust: a host
+that mints a reference and never uploads the bytes finds out at `build()`, with
+`file does not exist`, instead of shipping a string that points at nothing. A
+host that stores under a name of its own maps the two with `file_resolver`.
+FuncToWeb (or any wrapper) owns that mapping; see
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
 Only a bare `IsPathFile` is emitted today. The other `Str` atoms — `Min`, `Max`,
 `Pattern`, `Choices`, `IsPassword`, `Rows`, `Placeholder` — describe a text box
 and have no meaning on a file control, so any of them alongside `IsPathFile`
 raises `TypeError` ("not supported yet"), deferred until a real case asks for it,
-exactly as `Float.slider` is. `Label` and `Description` are the field's, not the
-`Str`'s, so a labelled file field is fine.
+exactly as `Float.slider` is. The same applies to `IsPathFile`'s own `min_size`
+and `max_size`. `Label` and `Description` are the field's, not the `Str`'s, so a
+labelled file field is fine.
 
 ### Patterns
 

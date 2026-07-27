@@ -568,6 +568,54 @@ function checkIntDefault(options, value, path) {
 }
 
 
+function fileReferenceAccepted(extensions, reference) {
+    if (extensions.length === 0) {
+        return true;
+    }
+
+    const lower = reference.toLowerCase();
+
+    return extensions.some((extension) => lower.endsWith(extension));
+}
+
+
+function checkFileReference(options, value, path) {
+    if (typeof value !== "string") {
+        fail(path, "expected a string file reference");
+    }
+
+    if (value === "") {
+        fail(path, "expected a non-empty file reference");
+    }
+
+    if (!fileReferenceAccepted(options.extensions, value)) {
+        fail(path, "is not an accepted file type");
+    }
+}
+
+
+function checkFileDefault(options, value, path) {
+    if (!options.multiple) {
+        checkFileReference(options, value, path);
+        return;
+    }
+
+    if (!Array.isArray(value)) {
+        fail(path, "expected an array of file references for a multiple file node");
+    }
+
+    value.forEach((item, i) => checkFileReference(options, item, `${path}[${i}]`));
+
+    if (options.minFiles !== null && value.length < options.minFiles) {
+        fail(path, `expected at least ${options.minFiles} file references`);
+    }
+
+    if (options.maxFiles !== null && value.length > options.maxFiles) {
+        fail(path, `expected at most ${options.maxFiles} file references`);
+    }
+}
+
+
 function checkFloatDefault(options, value, path) {
     if (options.min !== null) {
         const below = options.minExclusive ? value <= options.min : value < options.min;
@@ -672,8 +720,7 @@ function checkInitial(node, value, path) {
     }
 
     if (node.kind === "file") {
-        fail(path, "a file field cannot carry a default; its reference is "
-                 + "generated locally");
+        checkFileDefault(node.options, value, path);
         return;
     }
 
@@ -766,11 +813,6 @@ function checkFieldInitial(field, value, path) {
 
 function checkField(field, path) {
     checkNode(field.node, `${path}.node`);
-
-    if (field.hasDefault && field.node.kind === "file") {
-        fail(`${path}.default`, "a file field cannot carry a default; its "
-                              + "reference is generated locally");
-    }
 
     if (field.hasDefault) {
         checkFieldInitial(field, field.default, `${path}.default`);

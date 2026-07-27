@@ -1092,10 +1092,12 @@ SECTIONS = [
      "host reads file()/files() and value() on change and uploads the bytes "
      "labelled with each reference through its own channel. This demo does exactly "
      "that against a toy /upload endpoint and keeps the send button disabled until "
-     "every upload confirms. A file carries no plan default, but setValue() can "
-     "plant an existing reference (the host's own truth): it shows as \"Current "
-     "file\" and read() transports it verbatim — see the \"Editing a record\" case "
-     "below, where create and edit are the same form.",
+     "every upload confirms. An existing reference (the host's own truth) can be "
+     "planted with setValue() or declared as the field's plan default — the same "
+     "thing, since the default reaches the widget through setValue(): it shows as "
+     "\"Current file\", starts no upload and read() transports it verbatim — see "
+     "the \"Editing a record\" case below, where create and edit are the same "
+     "form.",
      [
          ("file-plain", "Any file",
           "IsPathFile with no extensions accepts any file. Pick one: the widget "

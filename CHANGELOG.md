@@ -2,6 +2,159 @@
 
 
 
+## [0.0.3] - 2026-07-27
+
+A file field can carry a default now, and it means what `FileWidget.setValue()`
+has always meant: an existing reference the host declares, shown as the current
+file and transported back untouched. It carries no bytes, it is not a local
+selection and it starts no upload — `file()` and `files()` stay empty and
+`uploads()` reports nothing, while a user's own pick appears in all three. A
+single node takes a `str`, a `multiple` one a `list[str]`, and an optional file
+takes `null` for its off state.
+
+The refusal was incoherent rather than merely strict. The widget already
+represented an existing file, `value()` and `read()` already carried it back, and
+no upload was ever started for it — but the plan rejected the same reference on
+the way in, so the general prefill mechanism broke on file fields: a prefill is
+expressed as a temporary default, and a form with a file could not have one.
+There were three separate refusals, one in `plan_of()` for a lone file field, one
+deeper in the value walk for a file nested anywhere, and one in `checkPlan()`.
+
+Underneath, there is now a single implementation. `compileForm()` builds the
+`FileWidget` and applies the default by calling its public `setValue()` — the
+same entry point a host uses — so the two paths cannot drift, and the tests
+assert exactly that: compiling with a default produces the same observable state
+as compiling without one and calling `setValue()` afterwards, both at the widget
+level and across the real Python → plan → browser boundary. It also fixes the
+second half of the incoherence, since the compiler was ignoring the initial value
+for file nodes even where one could be expressed.
+
+`checkPlan()` polices the shape and the widget owns the semantics: a default must
+match its node's arity (a bare string on a `multiple` node and an array on a
+single one are both rejected, with the failing path), every reference must be a
+non-empty string passing the same `endswith` extension filter, and a multiple
+default must sit within `minFiles` and `maxFiles`.
+
+One thing worth stating plainly, because it decides where a prefill can come
+from. A default written into a **Python** schema is certified by `IsPathFile`
+while the schema compiles, so `plan_of()` only ever sees a reference the core
+already accepted — which, since 0.0.7, means a real local file. A host whose
+references are not local paths, an object-store key say, cannot pass one through
+a schema default; it plants it with `setValue()` after mounting, which the plan
+layer and the widget accept as the opaque reference it is, and resolves it on the
+way back with `decode(..., file_resolver=...)`. Nothing in the browser ever
+checks that bytes stand behind a reference: an expired one shows in the form and
+fails when the host resolves it, which is correct, because the form and the
+storage are different layers.
+
+Nothing about the transport moved: the plan version, the property names, the file
+node's shape, the reference on the wire, the upload API and
+`decode(file_resolver=...)` are all unchanged, and a plan without file defaults
+behaves exactly as before.
+
+A file composes like any other node now, at any depth. `list[File | None]`,
+`list[File | int]`, `list[list[File]]` and `list[SomeDataclassHoldingAFile]` all
+compile, along with anything else built from them.
+
+They were never unrepresentable. The plan already had every node the shapes need
+— `list`, `optional`, `choice`, `object`, `file` — the Python adapter already
+recursed over them, `compileForm()` already compiled a list item by calling
+`compileNode()` on it, `checkPlan()` already validated defaults recursively, and
+`decode()` already walked files to any depth. Hand-writing those plans and
+mounting them worked before this release; the only thing standing in the way was
+one predicate in `plan_of()` that asked "does this list's item contain a file
+anywhere?" and refused if so. That is a blanket policy, not a structural limit,
+and it is gone — with the predicate itself, which had no other caller.
+
+What remains is the one file-specific decision worth keeping, and it is a
+shortcut rather than a rule: a *bare* `list[File]` still becomes a single
+`multiple` file node, because that is what a user expects from it. It is chosen
+by an exact shape match, so it captures nothing wider — which is also why
+`list[list[File]]` is a list whose rows are `multiple` file nodes, the shortcut
+applying at the inner level while the outer list stays a list. The structure is
+never flattened.
+
+The genuine ambiguity is documented as what it is. `File | str`, and so
+`list[File | str]`, is inconstructible because a file *is* a `Str`: both branches
+carry the option id `"str"` and the core rejects the schema with `duplicate
+option types in shape`. Nothing can tell them apart on the wire. That says
+nothing about `File | None` or `File | int`, whose branches are distinguishable
+and which both work.
+
+The two roads a reference can take are now stated apart, since only one of them
+carries a guarantee when the page renders. A default in a **Python schema** — a
+prefill included, a prefill being a temporary default — is certified by
+`IsPathFile` before a plan can exist: exact `str`, the file exists, it is a
+regular file, the extension matches, and the byte bounds hold when used. A
+missing one fails with `file does not exist` and produces no plan, which is what
+stops a form from displaying a file nobody has; a `list[File]` default is
+certified element by element, list bounds included. A reference applied at
+runtime with **`setValue()`** certifies nothing by itself: it is frontend state,
+and the guarantee arrives later, when the host resolves it with
+`decode(..., file_resolver=...)` and the core checks the path it resolved to.
+Both land the widget in the same observable state; only the first has been
+checked by render time.
+
+`IsPathFile(min_size=...)` and `max_size=...` remain deferred by the plan, and
+the two halves are now pinned separately: the core does validate a byte bound on
+a default, and the adapter still refuses to emit a plan it could not honour.
+
+Every icon the interface draws is a file now. The select arrow was a
+`data:image/svg+xml` written into `widgets.css` and the list's remove glyph was
+an `<svg>` the runtime assembled node by node; both are `.svg` files under
+`static/icons/`, referenced from the stylesheet and from nowhere else.
+
+The point is the page's Content-Security-Policy. A data URI in a stylesheet is
+still an image the browser fetches, so the arrow forced every host that loads
+`widgets.css` to allow `img-src data:` — a broad permission granted for one
+12×12 chevron. The icons now load under a plain `img-src 'self'`, and the sheet
+contains no `data:` and no base64 at all.
+
+Paths are relative to the stylesheet (`url("./icons/select-arrow-light.svg")`),
+not to the document and not absolute, so they follow it under any static prefix:
+a host that serves the package's static directory at `/assets/pth/` needs to
+configure nothing. What it does have to serve is the whole directory, the new
+`icons/` subdirectory included. The bundled demo's own static route was reaching
+only the flat files, so it grew a path segment — with the containment check
+tightened to match, since accepting a slash is exactly how a traversal gets in.
+
+The remove glyph keeps its colour. An external SVG loaded as an image cannot see
+the page's `currentColor`, so it would have frozen to one colour and lost both
+the theme and the red it turns on hover; it is painted through a `mask` instead,
+with the colour coming from the element. The runtime therefore builds no SVG of
+its own any more — it mints an empty, `aria-hidden` span the stylesheet masks —
+and the button's size, accessible name and behaviour are unchanged. If the file
+does not load the glyph is simply not painted: measured, not assumed.
+
+The tokens are the same three, `--pth-select-arrow-light` / `-dark` and the
+active `--pth-select-arrow`, and the select rule still reads only the active one.
+Contrast is still asserted, but now against the asset: the test reads the stroke
+colour out of the `.svg` the browser will actually fetch, so the guarantee covers
+what is painted rather than a copy of it kept in the stylesheet.
+
+Packaging was verified rather than assumed — nothing under `src/` ships just for
+being there — and `static/icons/*.svg` is declared as package data. The three
+files appear in both the wheel and the sdist.
+
+The documentation's own anchor checker was wrong, and quietly so. It slugged
+headings by deleting every character outside `[a-z0-9 -]`, underscores included,
+so a correct link like `[file_resolver](#file_resolver)` over a
+`### \`file_resolver\`` heading was reported as broken — and had been worked
+around by demoting the link to plain text. It also read every `#` line in the
+document as a heading, so the shell comments inside fenced code blocks became
+anchors the rendered page never offers.
+
+`tests/python/markdown_anchors.py` now reproduces GitHub's rule and documents
+it: inline Markdown is reduced to the text it renders as, the text is
+lowercased, everything that is not a letter, digit, `_`, `-` or space is dropped
+without leaving a separator (so `HTTP / transport` gives `http--transport`, with
+both spaces surviving), spaces become hyphens, non-ASCII letters are kept
+(`Café` gives `café`), and a repeated slug takes `-1`, `-2`. The heading parser
+reads ATX and Setext, skips fenced blocks whole, and honours fence lengths. The
+link is a link again, and a table of thirty-odd cases pins the semantics so the
+next change to it has to be deliberate.
+
+
 ## [0.0.2] - 2026-07-26
 
 A minted file reference now carries the name of the file it came from. When the
@@ -112,6 +265,104 @@ index. The value contract is untouched: `value()` returns the integer,
 than silently snapped. A slider whose stride *does* divide its range is
 unchanged in every respect — its range input still carries the real `min`, `max`
 and `step`, with no mapping.
+
+The stylesheet now has one theme contract, and it is entirely CSS. Widgets are
+mounted inside a `.pth-root` container; without an override that root follows
+`prefers-color-scheme`, and `data-pth-theme="light"` or `"dark"` — on the root
+or on any ancestor, `<html>` included — forces one. Nothing else exists: no
+`theme` in the plan, no option on `compileForm()`, no theme JavaScript in the
+runtime, no `localStorage`, no global theme manager. Because the automatic mode
+resolves in pure CSS the widgets cannot flash light-then-dark; a host that
+restores a remembered *manual* preference still has to write the attribute
+before the first paint, which is its own job and is documented as such.
+
+Overrides win by source order rather than by weight — the manual blocks follow
+the automatic one and the automatic one skips any root carrying an override
+itself or inheriting one — so there is no `!important` anywhere near a theme.
+The tokens land on the element holding the attribute and reach the widgets by
+inheritance, which is what makes the *nearest* override win: two roots on one
+page can hold different themes, and a subtree can disagree with its ancestor.
+
+The pre-1.0 `[data-theme="light"|"dark"]` attribute and the `.light-mode` /
+`.dark-mode` classes are gone, not aliased, and the sheet no longer writes to
+`:root` at all. Every rule now starts at `.pth-root`, so loading the stylesheet
+cannot reach a host element and widgets mounted outside a root are plainly
+unstyled instead of half-styled. `color-scheme` is set on the library's own
+controls only. The root paints `--pth-surface`, the background the palette is
+calibrated against, which is what lets a forced dark form sit on a light page
+without unreadable labels.
+
+Colours are two levels now: a `--pth-<name>-light` / `--pth-<name>-dark` pair
+per palette entry, and the active `--pth-<name>` token the widgets read. Nothing
+outside a theme block reads half a pair, and no colour is written into a rule.
+The naming inconsistency is gone (`--pth-nested-bg-light` vs
+`--pth-nested-background`), the colour aliases that had no per-theme source
+(`--pth-item-background`, `--pth-choice-border-color`, `--pth-index-color` and
+the rest) were dropped in favour of the tokens they pointed at, and `-bg`
+became `-background` throughout.
+
+Three colours that could not follow the theme now do. Button text is
+`--pth-submit-text` instead of a hard `#ffffff`, on the submit-coloured
+controls and on every hover that paints text over the focus colour; the error
+red is a pair, because one red cannot clear 4.5:1 on both a white and a near
+black background; and the select chevron, which was a `#6b7280` baked into its
+data URI, is a pair of its own. The switch knob gained one too.
+
+The palette was retuned for contrast and measured rather than eyeballed. Input
+borders were the worst offender — `#d1d5db` on white is 1.5:1, and the border is
+the main signal that a control is there — and now clear 3:1 against the surface,
+the input, the nested background and the hover. Text, error messages and button
+text clear 4.5:1 in both themes; borders, focus rings, the knob and the arrow
+clear 3:1. The tests assert those relations against thresholds, never a specific
+hex, so the palette stays tunable.
+
+The sheet is now tested as a contract rather than as a file. The Python suite
+reads it as data — selectors, blocks, token sets, palette pairs — and measures
+the contrast relations, and a new static page, `tests/browser/theme.html`, puts
+the cascade itself in front of a real browser, because specificity, inheritance
+and proximity do not exist in a text assertion. CI runs it once per system
+preference so automatic mode is covered both ways.
+
+`pytypehint 0.0.7` hardened `IsPathFile`, and the file field follows it. The core
+now certifies the file itself on the way in — extension, existence, regular file
+and byte size — so a reference the host never turned into real storage is refused
+by `build()` with `file does not exist` instead of travelling on as a promise
+nobody checks. Nothing in the browser changes: the widget still mints an opaque
+reference and still filters by extension alone. What changes is that the host has
+to close the gap, and the seam for that already existed —
+`decode(..., file_resolver=...)`, added earlier in this release.
+
+The bundled demo now uses it, because without it every one of its six file forms
+answered `file does not exist`. `/build` passes a resolver that maps a reference
+to the temp directory `/upload` writes into, and the two "edit an existing record"
+cases seed their sample files at startup, since a prefilled record names a file
+the host is supposed to already hold. The tests follow the same rule: anything
+that reaches a `Choices` list, a default or `build()` now points at a real file
+created under `tmp_path`, while the many tests that only inspect a plan still need
+nothing on disk — a plan is compiled from the shape, never from a value.
+
+`IsPathFile`'s new `min_size` and `max_size` are **refused at compile** rather
+than dropped. The plan has no way to carry a byte bound and the widget has no way
+to show one, so a form would have accepted a file the core then rejected *after*
+the upload had already happened. `plan_of()` raises `TypeError`
+("`IsPathFile.min_size` is not supported yet"), the same deferral `Float.slider`
+and the other `Str` atoms get, until the widget can check `File.size` itself.
+
+Two testing defects surfaced while checking the theme work and are fixed here.
+The browser smoke page had never actually gated anything: CI matched a bare
+`SMOKE: PASS`, which the page's own comment contains, so the step reported success
+whatever the page did — and it did fail, silently, about half the time. That half
+was a race, not a shortfall: a top-level `await import(...)` settles after the load
+event, so `--dump-dom` captured `PENDING`. Both pages now import statically (which
+also loses nothing — the `try`/`catch` started after the awaits, so it never caught
+an import failure), and both CI steps read the verdict from the `#result` element
+and dump the page when it is not PASS. Measured after the fix: 24 consecutive runs,
+all green.
+
+Not touched, deliberately: `prefers-reduced-motion` is unchanged and still has
+nothing to do with the theme, no transition animates `all`, no `light-dark()` —
+explicit blocks keep a subtree themable without a global `color-scheme` — and
+the widgets, the plan, the transport and validation are byte-for-byte the same.
 
 
 ## [0.0.1] - 2026-07-22

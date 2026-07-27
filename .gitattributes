@@ -4,5 +4,9 @@
 # whatever core.autocrlf a checkout happens to use: with CRLF the same files
 # gain a byte per line and the totals drift by several KB without a line of
 # code changing.
+#
+# The icons the stylesheet references ship and are served the same way, so they
+# are pinned for the same reason.
 *.js text eol=lf
 *.css text eol=lf
+*.svg text eol=lf

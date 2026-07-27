@@ -68,7 +68,9 @@ HTML = r"""<!doctype html>
   /* Demo chrome, theme-aware. The widgets style themselves through widgets.css;
      these variables keep the surrounding page in step. The palette is defined
      once as --l-* / --d-* and mapped to --demo-* per theme: automatic through
-     prefers-color-scheme, manual through [data-theme] set by the toggle. */
+     prefers-color-scheme, manual through the data-pth-theme the toggle writes
+     on <html>. The demo reuses the library's attribute so one switch moves both;
+     the toggle is the demo's own JavaScript and the runtime never sees it. */
   :root {
     --l-bg: #ffffff; --d-bg: #0f1115;
     --l-fg: #111827; --d-fg: #e5e7eb;
@@ -84,7 +86,7 @@ HTML = r"""<!doctype html>
     --l-send-bg: #334155; --d-send-bg: #475569;
     --l-hover: #f1f5f9; --d-hover: #21252e;
   }
-  :root, :root[data-theme="light"] {
+  :root, :root[data-pth-theme="light"] {
     --demo-bg: var(--l-bg); --demo-fg: var(--l-fg); --demo-muted: var(--l-muted);
     --demo-card: var(--l-card); --demo-panel: var(--l-panel);
     --demo-border: var(--l-border); --demo-border-strong: var(--l-border-strong);
@@ -104,7 +106,7 @@ HTML = r"""<!doctype html>
       color-scheme: dark;
     }
   }
-  :root[data-theme="dark"] {
+  :root[data-pth-theme="dark"] {
     --demo-bg: var(--d-bg); --demo-fg: var(--d-fg); --demo-muted: var(--d-muted);
     --demo-card: var(--d-card); --demo-panel: var(--d-panel);
     --demo-border: var(--d-border); --demo-border-strong: var(--d-border-strong);
@@ -113,6 +115,9 @@ HTML = r"""<!doctype html>
     --demo-send-bg: var(--d-send-bg); --demo-hover: var(--d-hover);
     color-scheme: dark;
   }
+  /* The form column is the library's themed root: widgets.css paints it and
+     themes everything inside it. Only the demo's own framing is added here. */
+  .pth-root { padding: .75rem; border-radius: 8px; }
   body { font-family: system-ui, sans-serif; max-width: 940px; margin: 2rem auto; padding: 0 1rem; color: var(--demo-fg); background: var(--demo-bg); }
   h1 { color: var(--demo-fg); }
   details { border: 1px solid var(--demo-border); border-radius: 8px; margin-bottom: .75rem; background: var(--demo-card); }
@@ -183,8 +188,8 @@ receives the transport object.</p>
   document.getElementById("theme-toggle").addEventListener("click", () => {
     const el = document.documentElement;
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    const current = el.getAttribute("data-theme") ?? (dark ? "dark" : "light");
-    el.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+    const current = el.dataset.pthTheme ?? (dark ? "dark" : "light");
+    el.dataset.pthTheme = current === "dark" ? "light" : "dark";
   });
 
   // demo-error-helpers-start
@@ -441,6 +446,7 @@ receives the transport object.</p>
     body.append(columns);
 
     const left = document.createElement("div");
+    left.className = "pth-root";
     const right = document.createElement("div");
     columns.append(left, right);
 
@@ -597,6 +603,39 @@ def plans():
     return JSONResponse(PLANS, headers=NO_CACHE)
 
 
+UPLOADS = Path(tempfile.gettempdir()) / "pytypehintweb-demo-uploads"
+
+
+def stored_path(reference: str) -> str:
+    # The seam between the two halves of a file field. The widget mints an opaque
+    # reference; `IsPathFile` certifies a real file — extension, existence,
+    # regular file, size. Nothing in the library knows how to get from one to the
+    # other, and deliberately so: only the host knows where it put the bytes.
+    # This demo puts them in a temp directory under the reference's own name, so
+    # the mapping is one line. A real host would look up its object store.
+    return str(UPLOADS / Path(reference).name)
+
+
+# The two "edit an existing record" cases prefill a file field with a reference
+# that was never uploaded, because it stands for a file the host already had.
+# Under a core that checks the bytes, "already had" has to be true, so the demo
+# seeds them the way its own storage would already hold them.
+SAMPLE_FILES = ["ada-lovelace.jpg", "beach.jpg", "sunset.jpg"]
+
+
+def seed_sample_files():
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+
+    for name in SAMPLE_FILES:
+        path = UPLOADS / name
+
+        if not path.exists():
+            path.write_bytes(b"demo")
+
+
+ON_STARTUP.append(seed_sample_files)
+
+
 @app.post("/build/{form_id}")
 async def build(form_id: str, data: dict):
     schema = SCHEMAS.get(form_id)
@@ -609,15 +648,13 @@ async def build(form_id: str, data: dict):
     # any build failure becomes a readable envelope instead of an opaque 500,
     # while `except Exception` still lets BaseException propagate.
     try:
-        resolved = schema.build(decode(schema, data))
+        prepared = decode(schema, data, file_resolver=stored_path)
+        resolved = schema.build(prepared)
         return JSONResponse({"ok": True, "built": repr(resolved)},
                             headers=NO_CACHE)
     except Exception as e:  # noqa: BLE001 - demo endpoint, isolated on purpose
         return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {e}"},
                             headers=NO_CACHE)
-
-
-UPLOADS = Path(tempfile.gettempdir()) / "pytypehintweb-demo-uploads"
 
 
 @app.post("/upload")
@@ -635,15 +672,21 @@ async def upload(reference: str = Form(...), file: UploadFile = File(...)):
 MEDIA_TYPES = {
     ".js": "text/javascript",
     ".css": "text/css",
+    ".svg": "image/svg+xml",
 }
 
 
-@app.get("/static/{name}")
+@app.get("/static/{name:path}")
 def static(name: str):
-    path = (STATIC / name).resolve()
+    # The stylesheet addresses its icons relative to itself, so the static tree
+    # has a subdirectory now and this serves it. `{name:path}` accepts the
+    # slash; containment is then checked against the resolved root rather than
+    # by comparing the parent, which is what keeps `..` out.
+    root = Path(STATIC).resolve()
+    path = (root / name).resolve()
     media_type = MEDIA_TYPES.get(path.suffix)
 
-    if (path.parent != Path(STATIC).resolve()
+    if (not path.is_relative_to(root)
             or media_type is None
             or not path.is_file()):
         return Response("not found", status_code=404)

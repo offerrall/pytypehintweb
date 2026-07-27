@@ -42,7 +42,7 @@ jobs:
       - run: pytest
 
   javascript:
-    name: JavaScript (suite + size + browser smoke)
+    name: JavaScript (suite + size + browser smoke + theme cascade)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,13 +58,38 @@ jobs:
       # pre-installed on ubuntu-latest. --no-sandbox is required on the runner.
       # The page prints "SMOKE: PASS (N checks)" into #result; fail the step
       # unless that verdict is present.
+      # The verdict is read from the #result element, never from a bare text
+      # match: both pages document their own PASS string in a comment, so an
+      # unanchored grep would report success whatever the page did.
       - name: Browser smoke (headless Chrome)
         run: |
           google-chrome --headless=new --no-sandbox --disable-gpu \
             --allow-file-access-from-files --virtual-time-budget=8000 \
             --dump-dom "file://$PWD/tests/browser/smoke.html" > smoke.out
-          grep -o 'SMOKE: [A-Z]* ([0-9]* checks)' smoke.out | head -1
-          grep -q 'SMOKE: PASS' smoke.out
+          grep -o 'id="result">SMOKE: [A-Z]* ([0-9]* checks)' smoke.out | head -1
+          if ! grep -q 'id="result">SMOKE: PASS' smoke.out; then
+            echo "::error::browser smoke did not reach a PASS verdict"
+            cat smoke.out
+            exit 1
+          fi
+      # The theme contract of widgets.css needs a real cascade — specificity,
+      # inheritance and proximity — which the text assertions in the Python suite
+      # cannot reach. The page is static (no modules), and it runs once per system
+      # preference so the automatic mode is covered both ways: 0 is dark, 1 light.
+      - name: Theme contract (headless Chrome, both system preferences)
+        run: |
+          for scheme in 0 1; do
+            google-chrome --headless=new --no-sandbox --disable-gpu \
+              --allow-file-access-from-files --virtual-time-budget=8000 \
+              --blink-settings=preferredColorScheme=$scheme \
+              --dump-dom "file://$PWD/tests/browser/theme.html" > theme.out
+            grep -o 'id="result">THEME: [A-Z]* ([0-9]* checks)' theme.out | head -1
+            if ! grep -q 'id="result">THEME: PASS' theme.out; then
+              echo "::error::theme contract failed with preferredColorScheme=$scheme"
+              cat theme.out
+              exit 1
+            fi
+          done
 
   packaging:
     name: Packaging (build + check)

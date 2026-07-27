@@ -1,41 +1,16 @@
 import { CHOICE_DEFAULTS, LIST_DEFAULTS } from "./defaults.js";
 import { putKey } from "./normalize.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
 let counter = 0;
 
 
 function trashIcon() {
-    const svg = document.createElementNS(SVG_NS, "svg");
+    const icon = document.createElement("span");
 
-    for (const [name, value] of Object.entries({
-        viewBox: "0 0 24 24",
-        width: "18",
-        height: "18",
-        fill: "none",
-        stroke: "currentColor",
-        "stroke-width": "2",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        "aria-hidden": "true",
-        focusable: "false",
-    })) {
-        svg.setAttribute(name, value);
-    }
+    icon.className = "pth-list-remove-icon";
+    icon.setAttribute("aria-hidden", "true");
 
-    const outline = document.createElementNS(SVG_NS, "path");
-    outline.setAttribute(
-        "d",
-        "M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 "
-        + "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6");
-
-    const bars = document.createElementNS(SVG_NS, "path");
-    bars.setAttribute("d", "M10 11v6 M14 11v6");
-
-    svg.append(outline, bars);
-
-    return svg;
+    return icon;
 }
 
 

@@ -27,11 +27,16 @@ releases.
 - Framework-free browser runtime (plain HTML, CSS and JS modules), with widgets
   usable directly or from a plan; browser files ship inside the Python package
   under `pytypehintweb.STATIC`.
+- Optional stylesheet scoped to a `.pth-root` container, with a light/dark theme
+  that follows the system or is forced with `data-pth-theme` — pure CSS, no
+  theme JavaScript and no flash. Its icons are plain `.svg` files served beside
+  it, so no `img-src data:` is needed.
 - `str`, `int`, `float`, `date`, `time`, `bool` and `enum` composing through lists,
   optional fields, unions and nested dataclasses, with constraints, static choices,
   integer sliders, and configurable validation messages and labels.
-- `file` fields (single or `list[File]`) that mint an upload reference the host
-  redeems through its own channel.
+- `file` fields (single, optional or `list[File]`, and inside dataclasses) that
+  mint an upload reference the host redeems through its own channel, and that
+  accept an existing reference as a plan default or through `setValue()`.
 - Centralized plan normalization and validation before any widget is built, and
   `plain` / `inline` / `wrapped` union transport.
 - Plan text is always rendered as text, never parsed as markup.
@@ -146,7 +151,7 @@ is walked through end to end in [Getting started](docs/getting-started.md).
 - [Plan contract](docs/plan.md) — the plan format, every property and invariant.
 - [Python API](docs/python.md) — `plan_of()`, `WebConfig`, annotation mappings.
 - [JavaScript API](docs/javascript.md) — `compileForm()`, widgets, reading,
-  accessibility, styling.
+  accessibility, styling and themes.
 - [Architecture](docs/architecture.md) — layers and which layer owns each rule.
 - [Testing](docs/testing.md) — how to run the suites and what they guarantee.
 - [Current limitations](docs/limitations.md).

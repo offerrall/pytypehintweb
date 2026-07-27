@@ -25,6 +25,31 @@ def test_source_blocks_are_separated_by_a_blank_line():
 def test_the_demo_serves_javascript_with_a_modern_media_type():
     assert demo.MEDIA_TYPES[".js"] == "text/javascript"
     assert demo.MEDIA_TYPES[".css"] == "text/css"
+    assert demo.MEDIA_TYPES[".svg"] == "image/svg+xml"
+
+
+def test_the_demo_serves_the_stylesheet_icons():
+    # widgets.css addresses its icons relative to itself, so the static route
+    # has to reach into the subdirectory or every select loses its arrow.
+    for name in ["widgets.css", "form.js", "icons/trash.svg",
+                 "icons/select-arrow-light.svg", "icons/select-arrow-dark.svg"]:
+        response = demo.static(name)
+
+        assert response.status_code == 200, name
+        assert response.body != b"", name
+
+
+@pytest.mark.parametrize("name", [
+    "../pyproject.toml",
+    "../../pyproject.toml",
+    "icons/../../pyproject.toml",
+    "icons/nope.svg",
+    "icons",
+    "",
+])
+def test_the_static_route_serves_nothing_outside_the_package(name):
+    # Accepting a slash in the path must not have opened a way out of STATIC.
+    assert demo.static(name).status_code == 404
 
 
 def test_the_demo_uses_a_lifespan_instead_of_deprecated_startup_events():
@@ -78,17 +103,85 @@ def test_the_demo_chrome_follows_the_light_and_dark_themes():
     text = demo.HTML
 
     assert "@media (prefers-color-scheme: dark)" in text
-    assert '[data-theme="dark"]' in text
+    assert '[data-pth-theme="dark"]' in text
     assert "--demo-bg" in text
     assert "background: var(--demo-bg)" in text
 
 
-def test_the_demo_has_a_theme_toggle():
+def test_the_demo_has_a_theme_toggle_on_the_public_attribute():
     text = demo.HTML
 
     assert 'id="theme-toggle"' in text
-    assert 'data-theme' in text
+    assert "el.dataset.pthTheme = current" in text
     assert "prefers-color-scheme: dark" in text
+
+    # The toggle is the demo's own chrome. Nothing about the theme may travel
+    # through the plan or the runtime, and the demo must not persist it either.
+    assert "localStorage" not in text
+    assert '[data-theme=' not in text
+
+
+def test_the_demo_mounts_its_widgets_inside_a_theme_root():
+    assert 'left.className = "pth-root"' in demo.HTML
+
+
+# --- the file seam: reference in, stored path out ---------------------------
+
+def test_the_demo_resolves_a_reference_to_where_it_stored_the_bytes():
+    # The widget mints an opaque reference and IsPathFile certifies a real file.
+    # decode()'s file_resolver is the only seam between the two, and the demo has
+    # to use it or every file form would fail at build().
+    assert demo.stored_path("abc-1234.pdf") == str(demo.UPLOADS / "abc-1234.pdf")
+
+    # A reference is client-supplied, so the path segment is all that is trusted.
+    assert demo.stored_path("albums/summer/beach.jpg") == str(
+        demo.UPLOADS / "beach.jpg")
+
+
+def _post_build(form_id, data):
+    import asyncio
+
+    response = asyncio.run(demo.build(form_id, data))
+
+    return json.loads(response.body)
+
+
+def test_the_build_endpoint_resolves_a_file_reference_end_to_end():
+    # The whole seam, through the real endpoint: a prefilled record names a file
+    # the host already holds, the resolver turns it into a stored path, and the
+    # core certifies that path. Before the resolver was wired in, every file form
+    # answered "file does not exist".
+    demo.seed_sample_files()
+
+    body = _post_build("file-edit",
+                       {"name": "Ada Lovelace",
+                        "avatar": "avatars/ada-lovelace.jpg"})
+
+    assert body["ok"] is True
+    assert "Ada Lovelace" in body["built"]
+    assert "ada-lovelace.jpg" in body["built"]
+
+
+def test_the_build_endpoint_still_reports_an_unstored_reference():
+    # The resolver maps, it does not invent: a reference whose bytes were never
+    # uploaded still fails, and the demo turns that into a readable envelope.
+    body = _post_build("file-edit",
+                       {"name": "Ada", "avatar": "never-uploaded-1234.jpg"})
+
+    assert body["ok"] is False
+    assert "file does not exist" in body["error"]
+
+
+def test_every_sample_record_reference_has_a_seeded_file():
+    # The two prefilled records name files the host is supposed to already hold.
+    # If a record grows a new one, it has to be seeded too or its form breaks.
+    import re
+
+    referenced = set(re.findall(r'"([^"]+\.(?:jpg|png|pdf))"', demo.HTML))
+    missing = [name for name in referenced
+               if Path(name).name not in demo.SAMPLE_FILES]
+
+    assert missing == [], f"unseeded sample files: {missing}"
 
 
 EXPECTED_MESSAGES = {

@@ -236,12 +236,40 @@ test("the remove button is an icon with an accessible name, not text", () => {
     list.add();
 
     const remove = list.items[0].removeButton;
-    const icon = remove.children.find((child) => child.tagName === "SVG");
 
-    assert.ok(icon, "the remove button should contain an inline svg icon");
+    // The glyph is an empty span the stylesheet masks with icons/trash.svg, so
+    // the runtime mints no SVG of its own and the icon still takes the button's
+    // colour. To a screen reader it does not exist: the name is the button's.
+    const icon = remove.children.find(
+        (child) => child.className === "pth-list-remove-icon");
+
+    assert.ok(icon, "the remove button should carry the masked icon span");
+    assert.equal(icon.tagName, "SPAN");
     assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.equal(icon.textContent, "");
     assert.equal(remove.textContent, "");
     assert.equal(remove.getAttribute("aria-label"), "Remove 1");
+});
+
+
+test("the runtime builds no svg of its own", () => {
+    // Every icon the library draws is a file under static/icons/, referenced
+    // from the stylesheet. Nothing constructs one at runtime.
+    const { form } = mount([
+        { name: "guests", node: { kind: "list", item: { kind: "str" } } },
+        { name: "doc", node: { kind: "file" } },
+    ]);
+
+    form.fields[0].widget.widget.add();
+
+    for (const field of form.fields) {
+        const host = document.createElement("div");
+        host.append(field.widget.el);
+
+        for (const node of walk(host)) {
+            assert.notEqual(node.tagName, "SVG");
+        }
+    }
 });
 
 

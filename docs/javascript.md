@@ -26,6 +26,7 @@ The modules ship inside the Python package, in the directory exposed as
 | `fields.js`    | `Widget`, `Field`, `GroupWidget`, `ListWidget`, `ChoiceWidget` |
 | `inputs.js`    | `StrWidget`, `IntWidget`, `FloatWidget`, `DateWidget`, `TimeWidget`, `BoolWidget`, `FileWidget`, `StrChoiceWidget`, `IntChoiceWidget`, `FloatChoiceWidget` |
 | `widgets.css`  | the optional stylesheet                                     |
+| `icons/*.svg`  | the icons the stylesheet references                         |
 
 Most applications only import `form.js`. Applications that build controls by
 hand import `fields.js` and `inputs.js`.
@@ -149,6 +150,9 @@ for (const field of form.fields) {
 
 Each entry of `form.fields` carries the field `name` from the plan and the
 `Field` widget that wraps its control.
+
+If you load the optional stylesheet, give that container the `pth-root` class:
+it is the element the sheet themes from. See [Styling](#styling).
 
 ## Form state
 
@@ -613,17 +617,26 @@ minted, and `build()` receives the whole struct. `read()` transports `null` for 
 file once it is cleared — **Replace** drops the current file for the user (who
 then picks a new one, or leaves it empty), `setValue(null)` for the host — and
 *remove* vs *keep* is then the host's own semantics to resolve. New bytes are
-uploaded only when the user actually picks a file. This is why plan defaults stay rejected while `setValue` may carry a
-reference: a plan is a static artefact and a frozen reference in it is a promise
-nobody renews, whereas the current file is runtime state the host sets fresh, from
-its own truth, at mount.
+uploaded only when the user actually picks a file.
 
-**The library provides no net for the reference/bytes coherence.** It mints a
+A **plan default on a file node** is this same current file, declared one step
+earlier. `compileForm()` applies it by calling `setValue()` on the widget it just
+built, so there is one implementation and the two cannot drift: compiling with a
+default lands in the same observable state as compiling without one and calling
+`setValue()` afterwards. A default is therefore never a local selection —
+`file()` and `files()` stay empty and `uploads()` reports nothing — while a
+user's pick appears in all three. Recompiling the plan restores the default,
+which is how a form resets.
+
+**The browser provides no net for the reference/bytes coherence.** It mints a
 reference and checks only the extension; it never verifies that anything is stored
-behind it. If the host never uploads the bytes, `build()` accepts a string that
-points at nothing. A wrapper such as
-[FuncToWeb](https://github.com/offerrall/FuncToWeb) that builds the upload cycle
-must guarantee that coherence itself if it matters to it.
+behind it. The net is on the Python side: since `pytypehint 0.0.7` `IsPathFile`
+certifies the file itself, so a reference whose bytes were never stored fails at
+`build()` with `file does not exist` instead of travelling on as a broken promise.
+Getting from the browser's reference to a path the core can certify is the host's
+mapping, and `decode(..., file_resolver=...)` is where it plugs in. A wrapper such
+as [FuncToWeb](https://github.com/offerrall/FuncToWeb) that builds the upload
+cycle owns both halves: storing the bytes and resolving the reference to them.
 
 This is the general pattern for any value promised in the browser but completed
 outside it: the widget produces the intent and a local token for it, and the host
@@ -753,47 +766,165 @@ It is not part of the contract. The widgets are semantically correct,
 keyboard-operable and accessible without it; loading it only changes their
 appearance. Values and validation behave identically either way.
 
-- Every rule is scoped to a `pth-*` class. The sheet carries no bare
-  `input`, `select`, `button` or `label` selectors, so nothing outside a
-  widget changes by loading it.
+- Every rule starts at `.pth-root`. The sheet carries no bare `input`,
+  `select`, `button`, `label`, `body` or `html` selectors and never writes to
+  `:root`, so nothing outside a root changes by loading it.
 - All design tokens use the `--pth-*` namespace: typography, spacing, sizing,
   radii, borders, shadows, transitions and the colour palette.
 - It never writes `outline: none`; keyboard focus stays visible through a
   `:focus-visible` outline in both themes.
+- It adds no JavaScript of any kind, for the theme or for anything else.
+
+### Icons
+
+The two icons the interface draws — the select's chevron and the list's remove
+glyph — are `.svg` files in `icons/`, beside the stylesheet:
+
+```text
+static/widgets.css
+static/icons/select-arrow-light.svg
+static/icons/select-arrow-dark.svg
+static/icons/trash.svg
+```
+
+The stylesheet addresses them **relative to itself**
+(`url("./icons/select-arrow-light.svg")`), and CSS resolves a relative URL
+against the stylesheet's own URL rather than the document's. Mount the static
+directory wherever you like — `/static/`, `/assets/pth/`, a CDN path — and the
+icons follow, with nothing to configure. The one requirement is to serve the
+**whole** directory, `icons/` included; serving only the flat files leaves the
+selects without a chevron.
+
+Nothing is embedded: no `data:` URI, no base64, no sprite sheet, no icon font,
+no SVG built at runtime. That is deliberate — a data URI in a stylesheet is
+still an image the browser fetches, so it would force every host that loads
+`widgets.css` to allow `img-src data:` in its Content-Security-Policy. As files,
+the icons load under a plain `img-src 'self'`. The library sets no CSP headers
+of its own.
+
+The remove glyph is painted through a CSS `mask` with `background-color:
+currentColor`, so it still takes its colour from the button — neutral normally,
+`--pth-error-color` on hover or focus. An `<img>` could not: an external SVG has
+no access to the page's `currentColor`. If an icon file fails to load the glyph
+is simply not painted; the control keeps its size, its accessible name and its
+behaviour.
+
+### The theme root
+
+Mount the compiled widgets inside a `.pth-root` container. It is the element
+the stylesheet themes from, and the only thing the sheet asks of the host:
+
+```html
+<div id="form" class="pth-root"></div>
+```
+
+```javascript
+  const host = document.getElementById("form");
+
+  for (const field of form.fields) {
+      host.append(field.widget.el);
+  }
+```
+
+Widgets mounted outside a root are simply unstyled — semantics, values and
+validation are unaffected.
 
 ### Light and dark themes
 
-The palette follows the viewer's system preference automatically through
-`@media (prefers-color-scheme: dark)`. An application can also force a theme,
-with no JavaScript, by setting an attribute or a class on any ancestor:
+The whole theme API is three HTML shapes:
 
 ```html
-<div data-theme="dark"> … </div>
-<body class="light-mode"> … </body>
+<div class="pth-root">                          <!-- follows the system -->
+<div class="pth-root" data-pth-theme="light">   <!-- forces light -->
+<div class="pth-root" data-pth-theme="dark">    <!-- forces dark -->
 ```
 
-`[data-theme="light"]`, `[data-theme="dark"]`, `.light-mode` and `.dark-mode`
-are all honoured. These roots only redefine `--pth-*` variables; they do not
-restyle host elements.
+Without the attribute the palette follows the viewer's system preference
+through `@media (prefers-color-scheme: dark)`. `data-pth-theme` overrides it,
+and always wins: the manual blocks come after the automatic one and the
+automatic one skips any root that carries an override itself or inherits one.
+
+The attribute works on the root or on any ancestor — `<html>` included — so a
+host can theme a whole page, one form, or a single subtree. Tokens travel by
+inheritance, so the nearest override wins and two roots on one page can hold
+different themes:
+
+```html
+<div class="pth-root" data-pth-theme="light"> … </div>
+<div class="pth-root" data-pth-theme="dark"> … </div>
+```
+
+What the theme is not:
+
+- it is not part of the plan, and `compileForm()` has no theme option;
+- it never changes a value, a default, `read()` or validation;
+- there is no theme JavaScript in the runtime — no listener, no class toggling,
+  no `localStorage`, no global theme manager;
+- the library never touches the host's own theme, and `color-scheme` is set on
+  the library's own controls only, never on `:root` or `body`;
+- the library persists nothing. A host that wants a remembered preference owns
+  it (see [No theme flash](#no-theme-flash)).
 
 ### Customising
 
-Override any token on `:root` or on a scoped ancestor:
+Colours come in two levels. A `--pth-<name>-light` / `--pth-<name>-dark` pair
+holds the palette, and the active `--pth-<name>` token — the only one the
+widgets read — points at one of the pair per theme. Override the pair, on the
+same element the sheet declares it on:
 
 ```css
-:root {
-    --pth-input-focus: #7c3aed;
+.pth-root {
+    --pth-input-focus-light: #7c3aed;
+    --pth-input-focus-dark: #a78bfa;
     --pth-radius-base: 6px;
 }
 ```
 
-Because the tokens cascade, an application can theme a single form by setting
-variables on its container rather than globally. The token set already covers
-the shapes future scalar widgets will need — checkbox-like controls, numeric
-inputs, native date and time inputs, and selects — so new widgets can reuse it
-without new colours.
+If you theme from an ancestor rather than from the root itself, declare the
+overrides on that ancestor too, since that is where the active token is
+resolved. Theming from the `.pth-root` element keeps both on one selector.
+
+`--pth-surface` is the background the palette is calibrated against, and the
+root paints it — that is what lets a forced dark form stand on a light page
+without unreadable labels. Set `--pth-surface-light` / `--pth-surface-dark` to
+your own page colours (or to `transparent`) to hand that back to the host.
+
+Non-colour tokens — typography, spacing, sizing, radii, borders, shadows,
+transitions — are theme-independent and are overridden directly.
 
 Element ids belong to the labelled control. Containers rely on classes only.
+
+### Contrast
+
+The palettes are tested, not asserted by hand: both clear WCAG 4.5:1 for normal
+text (input text, labels, descriptions, error messages, button text) and 3:1 for
+interface components (input borders, focus rings, the switch knob, the select
+arrow). The tests check those relations against thresholds, so the palette can
+be retuned freely — no specific colour is a public contract.
+
+### No theme flash
+
+Automatic mode cannot flash. It resolves in pure CSS, before the first paint,
+so there is no light-then-dark repaint when the runtime loads.
+
+A remembered *manual* preference belongs to the host, and it must be applied
+before the first paint — normally with a small inline script early in `<head>`:
+
+```html
+<script>
+(() => {
+    const theme = localStorage.getItem("theme");
+
+    if (theme === "light" || theme === "dark") {
+        document.documentElement.dataset.pthTheme = theme;
+    }
+})();
+</script>
+```
+
+The same applies to a host like FuncToWeb. To theme only the form rather than
+the page, write the attribute on the `.pth-root` element instead of on
+`<html>`.
 
 ### Not styled here
 

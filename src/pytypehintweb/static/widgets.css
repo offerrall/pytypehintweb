@@ -1,26 +1,213 @@
 /*
  * pytypehintweb widget stylesheet.
  *
- * Optional. The widgets are semantically correct and keyboard-operable
- * without it. Everything here is scoped to the pth-* class namespace and
- * driven by --pth-* custom properties, so it never restyles host elements.
+ * Optional. The widgets are semantically correct and keyboard-operable without
+ * it. Every rule lives under the .pth-root container and is driven by --pth-*
+ * custom properties, so loading it never restyles the host document.
  *
- * Themes: automatic via prefers-color-scheme, manual via [data-theme] or the
- * .light-mode / .dark-mode classes. No JavaScript is required to switch.
+ * Mount the compiled widgets inside a root:
+ *
+ *     <div class="pth-root">                          follows the system
+ *     <div class="pth-root" data-pth-theme="light">   forces light
+ *     <div class="pth-root" data-pth-theme="dark">    forces dark
+ *
+ * data-pth-theme also works on any ancestor (<html> included), so a host can
+ * theme a whole page or a single subtree. Without it the theme resolves in pure
+ * CSS from prefers-color-scheme, before the first paint and with no JavaScript.
+ *
+ * Colours come in two levels: --pth-<name>-light / --pth-<name>-dark palette
+ * pairs, and the active --pth-<name> token each theme block points at one of
+ * them. Widgets read the active tokens only.
+ *
+ * Icons are files in ./icons/, addressed relative to this stylesheet, so they
+ * follow it wherever it is mounted and load under a plain `img-src 'self'`. No
+ * data: URI, no base64, no sprite, no icon font. Serve the whole static
+ * directory, this sheet's siblings and its icons/ subdirectory alike.
  */
 
-:root {
+/* ===== Palette =====
+ *
+ * Theme-independent values. Declared on the root and on the manual theme roots,
+ * so a block that sits on an ancestor can still resolve its own pair.
+ */
+
+.pth-root,
+[data-pth-theme="light"],
+[data-pth-theme="dark"] {
+    --pth-surface-light: #ffffff;
+    --pth-surface-dark: #12151b;
+
+    --pth-label-color-light: #111827;
+    --pth-label-color-dark: #f0f2f5;
+
+    --pth-input-background-light: #ffffff;
+    --pth-input-background-dark: #1c2027;
+
+    --pth-input-text-light: #111827;
+    --pth-input-text-dark: #f0f2f5;
+
+    --pth-input-border-light: #858b96;
+    --pth-input-border-dark: #79818f;
+
+    --pth-input-focus-light: #2563eb;
+    --pth-input-focus-dark: #6aa8fb;
+
+    --pth-description-color-light: #5c6470;
+    --pth-description-color-dark: #a5adba;
+
+    --pth-error-color-light: #b91c1c;
+    --pth-error-color-dark: #f38b82;
+
+    --pth-submit-background-light: #2563eb;
+    --pth-submit-background-dark: #6aa8fb;
+
+    --pth-submit-hover-light: #1d4ed8;
+    --pth-submit-hover-dark: #93c2fd;
+
+    --pth-submit-text-light: #ffffff;
+    --pth-submit-text-dark: #0d1520;
+
+    --pth-neutral-hover-light: #f1f3f5;
+    --pth-neutral-hover-dark: #2a3039;
+
+    --pth-nested-background-light: #f4f5f7;
+    --pth-nested-background-dark: #232932;
+
+    --pth-toggle-knob-light: #ffffff;
+    --pth-toggle-knob-dark: #0d1520;
+
+    --pth-select-arrow-light: url("./icons/select-arrow-light.svg");
+    --pth-select-arrow-dark: url("./icons/select-arrow-dark.svg");
+
+    --pth-focus-shadow-light: rgba(37, 99, 235, 0.18);
+    --pth-focus-shadow-dark: rgba(106, 168, 251, 0.25);
+
+    --pth-error-shadow-light: rgba(185, 28, 28, 0.18);
+    --pth-error-shadow-dark: rgba(243, 139, 130, 0.25);
+
+    --pth-color-scheme-light: light;
+    --pth-color-scheme-dark: dark;
+}
+
+/* ===== Automatic theme =====
+ *
+ * The root resolves its own theme whenever no manual override sits on it or on
+ * an ancestor. Light first, dark under the system preference; both are pure CSS,
+ * so the correct palette is in place before the first paint.
+ */
+
+.pth-root:not([data-pth-theme]):not([data-pth-theme] *) {
+    --pth-surface: var(--pth-surface-light);
+    --pth-label-color: var(--pth-label-color-light);
+    --pth-input-background: var(--pth-input-background-light);
+    --pth-input-text: var(--pth-input-text-light);
+    --pth-input-border: var(--pth-input-border-light);
+    --pth-input-focus: var(--pth-input-focus-light);
+    --pth-description-color: var(--pth-description-color-light);
+    --pth-error-color: var(--pth-error-color-light);
+    --pth-submit-background: var(--pth-submit-background-light);
+    --pth-submit-hover: var(--pth-submit-hover-light);
+    --pth-submit-text: var(--pth-submit-text-light);
+    --pth-neutral-hover: var(--pth-neutral-hover-light);
+    --pth-nested-background: var(--pth-nested-background-light);
+    --pth-toggle-knob: var(--pth-toggle-knob-light);
+    --pth-select-arrow: var(--pth-select-arrow-light);
+    --pth-focus-shadow: var(--pth-focus-shadow-light);
+    --pth-error-shadow: var(--pth-error-shadow-light);
+    --pth-color-scheme: var(--pth-color-scheme-light);
+}
+
+@media (prefers-color-scheme: dark) {
+    .pth-root:not([data-pth-theme]):not([data-pth-theme] *) {
+        --pth-surface: var(--pth-surface-dark);
+        --pth-label-color: var(--pth-label-color-dark);
+        --pth-input-background: var(--pth-input-background-dark);
+        --pth-input-text: var(--pth-input-text-dark);
+        --pth-input-border: var(--pth-input-border-dark);
+        --pth-input-focus: var(--pth-input-focus-dark);
+        --pth-description-color: var(--pth-description-color-dark);
+        --pth-error-color: var(--pth-error-color-dark);
+        --pth-submit-background: var(--pth-submit-background-dark);
+        --pth-submit-hover: var(--pth-submit-hover-dark);
+        --pth-submit-text: var(--pth-submit-text-dark);
+        --pth-neutral-hover: var(--pth-neutral-hover-dark);
+        --pth-nested-background: var(--pth-nested-background-dark);
+        --pth-toggle-knob: var(--pth-toggle-knob-dark);
+        --pth-select-arrow: var(--pth-select-arrow-dark);
+        --pth-focus-shadow: var(--pth-focus-shadow-dark);
+        --pth-error-shadow: var(--pth-error-shadow-dark);
+        --pth-color-scheme: var(--pth-color-scheme-dark);
+    }
+}
+
+/* ===== Manual theme =====
+ *
+ * After the automatic block, so an override always wins. The tokens land on the
+ * element carrying the attribute — the root itself or any ancestor — and reach
+ * the widgets by inheritance, which is what makes the nearest override win and
+ * lets two roots on one page hold different themes. No !important is needed.
+ */
+
+[data-pth-theme="light"] {
+    --pth-surface: var(--pth-surface-light);
+    --pth-label-color: var(--pth-label-color-light);
+    --pth-input-background: var(--pth-input-background-light);
+    --pth-input-text: var(--pth-input-text-light);
+    --pth-input-border: var(--pth-input-border-light);
+    --pth-input-focus: var(--pth-input-focus-light);
+    --pth-description-color: var(--pth-description-color-light);
+    --pth-error-color: var(--pth-error-color-light);
+    --pth-submit-background: var(--pth-submit-background-light);
+    --pth-submit-hover: var(--pth-submit-hover-light);
+    --pth-submit-text: var(--pth-submit-text-light);
+    --pth-neutral-hover: var(--pth-neutral-hover-light);
+    --pth-nested-background: var(--pth-nested-background-light);
+    --pth-toggle-knob: var(--pth-toggle-knob-light);
+    --pth-select-arrow: var(--pth-select-arrow-light);
+    --pth-focus-shadow: var(--pth-focus-shadow-light);
+    --pth-error-shadow: var(--pth-error-shadow-light);
+    --pth-color-scheme: var(--pth-color-scheme-light);
+}
+
+[data-pth-theme="dark"] {
+    --pth-surface: var(--pth-surface-dark);
+    --pth-label-color: var(--pth-label-color-dark);
+    --pth-input-background: var(--pth-input-background-dark);
+    --pth-input-text: var(--pth-input-text-dark);
+    --pth-input-border: var(--pth-input-border-dark);
+    --pth-input-focus: var(--pth-input-focus-dark);
+    --pth-description-color: var(--pth-description-color-dark);
+    --pth-error-color: var(--pth-error-color-dark);
+    --pth-submit-background: var(--pth-submit-background-dark);
+    --pth-submit-hover: var(--pth-submit-hover-dark);
+    --pth-submit-text: var(--pth-submit-text-dark);
+    --pth-neutral-hover: var(--pth-neutral-hover-dark);
+    --pth-nested-background: var(--pth-nested-background-dark);
+    --pth-toggle-knob: var(--pth-toggle-knob-dark);
+    --pth-select-arrow: var(--pth-select-arrow-dark);
+    --pth-focus-shadow: var(--pth-focus-shadow-dark);
+    --pth-error-shadow: var(--pth-error-shadow-dark);
+    --pth-color-scheme: var(--pth-color-scheme-dark);
+}
+
+/* ===== Root =====
+ *
+ * Everything that does not change with the theme, plus the surface the palette
+ * is calibrated against. Painting it is what lets a forced theme stand on a host
+ * page of the opposite one; set --pth-surface-light / --pth-surface-dark (to
+ * `transparent`, or to your own page colours) to hand that back to the host.
+ */
+
+.pth-root {
     /* Typography */
     --pth-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     --pth-font-size-base: 1rem;
     --pth-font-size-small: 0.875rem;
     --pth-font-size-label: 0.9375rem;
-    --pth-font-weight-normal: 400;
     --pth-font-weight-semibold: 600;
     --pth-letter-spacing-label: -0.01em;
 
     /* Spacing */
-    --pth-gap-form: 1rem;
     --pth-gap-field: 0.5rem;
     --pth-gap-small: 0.25rem;
     --pth-gap: 0.5rem;
@@ -30,11 +217,11 @@
     --pth-margin-description: -0.25rem;
     --pth-margin-error: 0.375rem;
     --pth-field-spacing: 1rem;
+    --pth-nesting-indent: 0.875rem;
 
     /* Border radius */
     --pth-radius-base: 10px;
     --pth-radius-small: 8px;
-    --pth-item-radius: var(--pth-radius-small);
 
     /* Border width */
     --pth-border-width: 2px;
@@ -79,128 +266,35 @@
         background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
         color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
+    /* Icons. One file each, addressed relative to this stylesheet. The trash
+       glyph needs no theme pair: it is painted through a mask, so its colour
+       comes from the element and follows the theme like any other text. */
+    --pth-icon-trash: url("./icons/trash.svg");
+
     /* Focus outline (keyboard) */
     --pth-focus-width: 2px;
     --pth-focus-offset: 2px;
     --pth-focus-color: var(--pth-input-focus);
 
-    /* Colors — definitions (light / dark) */
-    --pth-label-color-light: #1a1a1a;
-    --pth-label-color-dark: #f0f0f0;
-    --pth-input-bg-light: #ffffff;
-    --pth-input-bg-dark: #1e1e1e;
-    --pth-input-text-light: #1a1a1a;
-    --pth-input-text-dark: #f0f0f0;
-    --pth-input-border-light: #d1d5db;
-    --pth-input-border-dark: #374151;
-    --pth-input-focus-light: #3b82f6;
-    --pth-input-focus-dark: #60a5fa;
-    --pth-description-color-light: #6b7280;
-    --pth-description-color-dark: #9ca3af;
-    --pth-submit-bg-light: #3b82f6;
-    --pth-submit-bg-dark: #60a5fa;
-    --pth-submit-hover-light: #2563eb;
-    --pth-submit-hover-dark: #3b82f6;
-    --pth-neutral-hover-light: #f3f4f6;
-    --pth-neutral-hover-dark: #374151;
-    --pth-nested-bg-light: #f7f7f9;
-    --pth-nested-bg-dark: #262626;
-    --pth-error-color: #ef4444;
-
-    /* Colors — active (default: light) */
-    --pth-label-color: var(--pth-label-color-light);
-    --pth-input-bg: var(--pth-input-bg-light);
-    --pth-input-text: var(--pth-input-text-light);
-    --pth-input-border: var(--pth-input-border-light);
-    --pth-input-focus: var(--pth-input-focus-light);
-    --pth-description-color: var(--pth-description-color-light);
-    --pth-submit-bg: var(--pth-submit-bg-light);
-    --pth-submit-hover: var(--pth-submit-hover-light);
-    --pth-neutral-hover: var(--pth-neutral-hover-light);
-    --pth-nested-background: var(--pth-nested-bg-light);
-    --pth-focus-shadow: rgba(59, 130, 246, 0.15);
-    --pth-error-shadow: rgba(239, 68, 68, 0.15);
-    --pth-color-scheme: light;
-
-    /* Aliases kept for containers and older overrides */
-    --pth-muted-color: var(--pth-description-color);
-    --pth-border-color: var(--pth-input-border);
-    --pth-item-background: var(--pth-input-bg);
-    --pth-item-border-color: var(--pth-input-border);
-    --pth-item-nested-background: var(--pth-nested-background);
-    --pth-choice-border-color: var(--pth-input-border);
-    --pth-group-border-color: var(--pth-input-border);
-    --pth-list-border-color: var(--pth-input-border);
-    --pth-nesting-indent: 0.875rem;
-    --pth-list-nested-border-color: var(--pth-input-border);
-    --pth-index-color: var(--pth-description-color);
-    --pth-small-font-size: var(--pth-font-size-small);
-}
-
-/* Automatic: OS preference */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --pth-label-color: var(--pth-label-color-dark);
-        --pth-input-bg: var(--pth-input-bg-dark);
-        --pth-input-text: var(--pth-input-text-dark);
-        --pth-input-border: var(--pth-input-border-dark);
-        --pth-input-focus: var(--pth-input-focus-dark);
-        --pth-description-color: var(--pth-description-color-dark);
-        --pth-submit-bg: var(--pth-submit-bg-dark);
-        --pth-submit-hover: var(--pth-submit-hover-dark);
-        --pth-neutral-hover: var(--pth-neutral-hover-dark);
-        --pth-nested-background: var(--pth-nested-bg-dark);
-        --pth-focus-shadow: rgba(96, 165, 250, 0.25);
-        --pth-error-shadow: rgba(239, 68, 68, 0.25);
-        --pth-color-scheme: dark;
-    }
-}
-
-/* Manual: data-theme attribute or theme class */
-[data-theme="light"],
-.light-mode {
-    --pth-label-color: var(--pth-label-color-light);
-    --pth-input-bg: var(--pth-input-bg-light);
-    --pth-input-text: var(--pth-input-text-light);
-    --pth-input-border: var(--pth-input-border-light);
-    --pth-input-focus: var(--pth-input-focus-light);
-    --pth-description-color: var(--pth-description-color-light);
-    --pth-submit-bg: var(--pth-submit-bg-light);
-    --pth-submit-hover: var(--pth-submit-hover-light);
-    --pth-neutral-hover: var(--pth-neutral-hover-light);
-    --pth-nested-background: var(--pth-nested-bg-light);
-    --pth-focus-shadow: rgba(59, 130, 246, 0.15);
-    --pth-error-shadow: rgba(239, 68, 68, 0.15);
-    --pth-color-scheme: light;
-}
-
-[data-theme="dark"],
-.dark-mode {
-    --pth-label-color: var(--pth-label-color-dark);
-    --pth-input-bg: var(--pth-input-bg-dark);
-    --pth-input-text: var(--pth-input-text-dark);
-    --pth-input-border: var(--pth-input-border-dark);
-    --pth-input-focus: var(--pth-input-focus-dark);
-    --pth-description-color: var(--pth-description-color-dark);
-    --pth-submit-bg: var(--pth-submit-bg-dark);
-    --pth-submit-hover: var(--pth-submit-hover-dark);
-    --pth-neutral-hover: var(--pth-neutral-hover-dark);
-    --pth-nested-background: var(--pth-nested-bg-dark);
-    --pth-focus-shadow: rgba(96, 165, 250, 0.25);
-    --pth-error-shadow: rgba(239, 68, 68, 0.25);
-    --pth-color-scheme: dark;
+    /* A painted surface, not just a variable carrier: hosts give it padding, so
+       it sizes the way a component root is expected to. It is not inherited, so
+       nothing inside the host changes. */
+    box-sizing: border-box;
+    color: var(--pth-label-color);
+    background: var(--pth-surface);
+    font-family: var(--pth-font-family);
 }
 
 /* ===== Layout ===== */
 
-.pth-field [hidden],
-.pth-choice [hidden],
-.pth-group [hidden],
-.pth-list [hidden] {
+.pth-root .pth-field [hidden],
+.pth-root .pth-choice [hidden],
+.pth-root .pth-group [hidden],
+.pth-root .pth-list [hidden] {
     display: none !important;
 }
 
-.pth-field {
+.pth-root .pth-field {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
@@ -208,13 +302,13 @@
     font-family: var(--pth-font-family);
 }
 
-.pth-field-header {
+.pth-root .pth-field-header {
     display: flex;
     align-items: center;
     gap: var(--pth-gap);
 }
 
-.pth-label {
+.pth-root .pth-label {
     font-size: var(--pth-font-size-label);
     font-weight: var(--pth-font-weight-semibold);
     color: var(--pth-label-color);
@@ -222,23 +316,23 @@
     margin: 0;
 }
 
-.pth-field-header .pth-toggle {
+.pth-root .pth-field-header .pth-toggle {
     margin-left: auto;
 }
 
-.pth-description {
+.pth-root .pth-description {
     font-size: var(--pth-font-size-small);
     color: var(--pth-description-color);
     margin-top: var(--pth-margin-description);
 }
 
-.pth-str-message,
-.pth-int-message,
-.pth-float-message,
-.pth-date-message,
-.pth-time-message,
-.pth-file-message,
-.pth-list-message {
+.pth-root .pth-str-message,
+.pth-root .pth-int-message,
+.pth-root .pth-float-message,
+.pth-root .pth-date-message,
+.pth-root .pth-time-message,
+.pth-root .pth-file-message,
+.pth-root .pth-list-message {
     font-size: var(--pth-font-size-small);
     font-weight: 500;
     color: var(--pth-error-color);
@@ -246,21 +340,21 @@
 }
 
 /* Nested groups get a subtle inset. */
-.pth-field .pth-field {
+.pth-root .pth-field .pth-field {
     margin-bottom: 0;
 }
 
 /* ===== Text, password and textarea ===== */
 
-.pth-str {
+.pth-root .pth-str {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
 }
 
-.pth-str input[type="text"],
-.pth-str input[type="password"],
-.pth-str textarea {
+.pth-root .pth-str input[type="text"],
+.pth-root .pth-str input[type="password"],
+.pth-root .pth-str textarea {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -270,37 +364,37 @@
     font-size: var(--pth-font-size-base);
     font-family: var(--pth-font-family);
     color: var(--pth-input-text);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     box-sizing: border-box;
     transition: var(--pth-transition-base);
 }
 
-.pth-str textarea {
+.pth-root .pth-str textarea {
     resize: vertical;
 }
 
 /* The colour assistant: the text field and its picker sit on one row, the text
    growing to fill and the picker a fixed square. Both use the shared input
    tokens so the pair reads as one control. */
-.pth-str-row {
+.pth-root .pth-str-row {
     display: flex;
     gap: var(--pth-gap);
     align-items: stretch;
 }
 
-.pth-str-row input[type="text"] {
+.pth-root .pth-str-row input[type="text"] {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-.pth-str-picker {
+.pth-root .pth-str-picker {
     flex: 0 0 auto;
     width: var(--pth-input-height);
     min-height: var(--pth-input-height);
     padding: var(--pth-gap-small);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     box-sizing: border-box;
@@ -308,14 +402,14 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-str-picker:focus {
+.pth-root .pth-str-picker:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
 }
 
-.pth-str input[type="text"]:focus,
-.pth-str input[type="password"]:focus,
-.pth-str textarea:focus {
+.pth-root .pth-str input[type="text"]:focus,
+.pth-root .pth-str input[type="password"]:focus,
+.pth-root .pth-str textarea:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
     transform: var(--pth-transform-input-focus);
@@ -323,15 +417,15 @@
 
 /* ===== Integer, float, number and slider ===== */
 
-.pth-int,
-.pth-float {
+.pth-root .pth-int,
+.pth-root .pth-float {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
 }
 
-.pth-int input[type="text"],
-.pth-float input[type="text"] {
+.pth-root .pth-int input[type="text"],
+.pth-root .pth-float input[type="text"] {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -341,42 +435,44 @@
     font-size: var(--pth-font-size-base);
     font-family: var(--pth-font-family);
     color: var(--pth-input-text);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     box-sizing: border-box;
     transition: var(--pth-transition-base);
 }
 
-.pth-int input[type="text"]:focus,
-.pth-float input[type="text"]:focus {
+.pth-root .pth-int input[type="text"]:focus,
+.pth-root .pth-float input[type="text"]:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
     transform: var(--pth-transform-input-focus);
 }
 
-/* Native sub-widgets (native pickers, autofill) follow the active theme. */
-.pth-str input,
-.pth-str textarea,
-.pth-int input,
-.pth-float input,
-.pth-date input,
-.pth-time input,
-.pth-choice-input {
+/* Native sub-widgets (native pickers, autofill) follow the active theme. The
+   property is set on the library's own controls only: the host document keeps
+   whatever color-scheme it declared for itself. */
+.pth-root .pth-str input,
+.pth-root .pth-str textarea,
+.pth-root .pth-int input,
+.pth-root .pth-float input,
+.pth-root .pth-date input,
+.pth-root .pth-time input,
+.pth-root .pth-choice-input {
     color-scheme: var(--pth-color-scheme);
 }
 
 /* ===== Native date and time ===== */
 
-.pth-date,
-.pth-time {
+.pth-root .pth-date,
+.pth-root .pth-time {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
 }
 
-.pth-date input,
-.pth-time input {
+.pth-root .pth-date input,
+.pth-root .pth-time input {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -386,15 +482,15 @@
     font-size: var(--pth-font-size-base);
     font-family: var(--pth-font-family);
     color: var(--pth-input-text);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     box-sizing: border-box;
     transition: var(--pth-transition-base);
 }
 
-.pth-date input:focus,
-.pth-time input:focus {
+.pth-root .pth-date input:focus,
+.pth-root .pth-time input:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
     transform: var(--pth-transform-input-focus);
@@ -402,12 +498,12 @@
 
 /* ===== Number stepper (own buttons, no box of their own) ===== */
 
-.pth-number {
+.pth-root .pth-number {
     position: relative;
     width: 100%;
 }
 
-.pth-number-controls {
+.pth-root .pth-number-controls {
     position: absolute;
     top: var(--pth-number-controls-offset);
     right: var(--pth-number-controls-offset);
@@ -415,7 +511,7 @@
     display: flex;
     flex-direction: column;
     width: var(--pth-number-controls-width);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border-left: var(--pth-border-width-thin) solid var(--pth-input-border);
     border-top-right-radius: var(--pth-radius-small);
     border-bottom-right-radius: var(--pth-radius-small);
@@ -425,7 +521,7 @@
         transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.pth-number-btn {
+.pth-root .pth-number-btn {
     flex: 1;
     padding: 0;
     margin: 0;
@@ -441,41 +537,41 @@
     transition: var(--pth-transition-fast);
 }
 
-.pth-number-btn:first-child {
+.pth-root .pth-number-btn:first-child {
     border-bottom: var(--pth-border-width-thin) solid var(--pth-input-border);
 }
 
-.pth-number-btn:hover {
+.pth-root .pth-number-btn:hover {
     background: var(--pth-neutral-hover);
 }
 
-.pth-number-btn:active {
+.pth-root .pth-number-btn:active {
     background: var(--pth-input-focus);
-    color: #ffffff;
+    color: var(--pth-submit-text);
 }
 
-.pth-number input:focus + .pth-number-controls {
+.pth-root .pth-number input:focus + .pth-number-controls {
     border-left-color: var(--pth-input-focus);
     transform: var(--pth-transform-input-focus);
 }
 
-.pth-number input[aria-invalid="true"] + .pth-number-controls {
+.pth-root .pth-number input[aria-invalid="true"] + .pth-number-controls {
     border-left-color: var(--pth-error-color);
 }
 
 /* Slider and its value badge sit on one row when both are present. */
-.pth-int:has(input[type="range"]) {
+.pth-root .pth-int:has(input[type="range"]) {
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
     gap: var(--pth-gap-slider);
 }
 
-.pth-int:has(input[type="range"]) .pth-int-message {
+.pth-root .pth-int:has(input[type="range"]) .pth-int-message {
     grid-column: 1 / -1;
 }
 
-.pth-int input[type="range"] {
+.pth-root .pth-int input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -485,7 +581,7 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-int input[type="range"]::-webkit-slider-thumb {
+.pth-root .pth-int input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: var(--pth-slider-thumb-size);
@@ -497,17 +593,17 @@
     box-shadow: var(--pth-shadow-slider-thumb);
 }
 
-.pth-int input[type="range"]::-webkit-slider-thumb:hover {
+.pth-root .pth-int input[type="range"]::-webkit-slider-thumb:hover {
     background: var(--pth-submit-hover);
     transform: var(--pth-transform-slider-thumb-hover);
     box-shadow: var(--pth-shadow-slider-thumb-hover);
 }
 
-.pth-int input[type="range"]::-webkit-slider-thumb:active {
+.pth-root .pth-int input[type="range"]::-webkit-slider-thumb:active {
     transform: var(--pth-transform-slider-thumb-active);
 }
 
-.pth-int input[type="range"]::-moz-range-thumb {
+.pth-root .pth-int input[type="range"]::-moz-range-thumb {
     width: var(--pth-slider-thumb-size);
     height: var(--pth-slider-thumb-size);
     border: none;
@@ -518,19 +614,19 @@
     box-shadow: var(--pth-shadow-slider-thumb);
 }
 
-.pth-int input[type="range"]::-moz-range-track {
+.pth-root .pth-int input[type="range"]::-moz-range-track {
     height: var(--pth-slider-height);
     border-radius: var(--pth-radius-small);
     background: var(--pth-input-border);
 }
 
-.pth-int-value {
+.pth-root .pth-int-value {
     min-width: var(--pth-slider-value-min-width);
     padding: var(--pth-padding-list-value);
     font-size: var(--pth-font-size-small);
     font-weight: var(--pth-font-weight-semibold);
     color: var(--pth-label-color);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-small);
     text-align: center;
@@ -540,7 +636,7 @@
 
 /* ===== Selects (choices and union branch selector) ===== */
 
-.pth-choice-input {
+.pth-root .pth-choice-input {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -550,8 +646,8 @@
     font-size: var(--pth-font-size-base);
     font-family: var(--pth-font-family);
     color: var(--pth-input-text);
-    background-color: var(--pth-input-bg);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-color: var(--pth-input-background);
+    background-image: var(--pth-select-arrow);
     background-repeat: no-repeat;
     background-position: right 1rem center;
     border: var(--pth-border-width) solid var(--pth-input-border);
@@ -561,24 +657,24 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-choice-input:focus {
+.pth-root .pth-choice-input:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
     transform: var(--pth-transform-input-focus);
 }
 
-.pth-choice-input:disabled {
+.pth-root .pth-choice-input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.pth-choice-input option[disabled] {
+.pth-root .pth-choice-input option[disabled] {
     color: var(--pth-description-color);
 }
 
 /* ===== Optional toggle (native checkbox styled as a switch) ===== */
 
-.pth-toggle {
+.pth-root .pth-toggle {
     -webkit-appearance: none;
     appearance: none;
     position: relative;
@@ -593,7 +689,7 @@
     transition: var(--pth-transition-toggle);
 }
 
-.pth-toggle::before {
+.pth-root .pth-toggle::before {
     content: "";
     position: absolute;
     top: 3px;
@@ -601,27 +697,27 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #ffffff;
+    background: var(--pth-toggle-knob);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     transition: var(--pth-transition-toggle);
 }
 
-.pth-toggle:checked {
+.pth-root .pth-toggle:checked {
     background: var(--pth-input-focus);
 }
 
-.pth-toggle:checked::before {
+.pth-root .pth-toggle:checked::before {
     transform: translateX(24px);
 }
 
 /* ===== Boolean (native checkbox styled as a switch) ===== */
 
-.pth-bool {
+.pth-root .pth-bool {
     display: flex;
     align-items: center;
 }
 
-.pth-bool input[type="checkbox"] {
+.pth-root .pth-bool input[type="checkbox"] {
     -webkit-appearance: none;
     appearance: none;
     position: relative;
@@ -636,7 +732,7 @@
     transition: var(--pth-transition-toggle);
 }
 
-.pth-bool input[type="checkbox"]::before {
+.pth-root .pth-bool input[type="checkbox"]::before {
     content: "";
     position: absolute;
     top: 3px;
@@ -644,35 +740,35 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #ffffff;
+    background: var(--pth-toggle-knob);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     transition: var(--pth-transition-toggle);
 }
 
-.pth-bool input[type="checkbox"]:checked {
+.pth-root .pth-bool input[type="checkbox"]:checked {
     background: var(--pth-input-focus);
 }
 
-.pth-bool input[type="checkbox"]:checked::before {
+.pth-root .pth-bool input[type="checkbox"]:checked::before {
     transform: translateX(24px);
 }
 
 /* ===== File ===== */
 
-.pth-file {
+.pth-root .pth-file {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
 }
 
 /* The picker and its + button sit on one row; the input is a dashed drop zone. */
-.pth-file-row {
+.pth-root .pth-file-row {
     display: flex;
     gap: var(--pth-gap);
     align-items: stretch;
 }
 
-.pth-file input[type="file"] {
+.pth-root .pth-file input[type="file"] {
     flex: 1;
     min-width: 0;
     max-width: 100%;
@@ -680,7 +776,7 @@
     font-size: var(--pth-font-size-small);
     font-family: var(--pth-font-family);
     color: var(--pth-input-text);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) dashed var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     box-sizing: border-box;
@@ -690,20 +786,20 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file input[type="file"]:hover {
+.pth-root .pth-file input[type="file"]:hover {
     border-color: var(--pth-input-focus);
 }
 
-.pth-file input[type="file"]:focus {
+.pth-root .pth-file input[type="file"]:focus {
     border-color: var(--pth-input-focus);
     box-shadow: var(--pth-shadow-focus);
 }
 
-.pth-file input[type="file"]::file-selector-button {
+.pth-root .pth-file input[type="file"]::file-selector-button {
     padding: 0.5rem 1rem;
     margin-right: 0.875rem;
     color: var(--pth-label-color);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-small);
     font-size: var(--pth-font-size-small);
@@ -713,27 +809,27 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file input[type="file"]::file-selector-button:hover {
-    color: #ffffff;
+.pth-root .pth-file input[type="file"]::file-selector-button:hover {
+    color: var(--pth-submit-text);
     background: var(--pth-input-focus);
     border-color: var(--pth-input-focus);
     transform: var(--pth-transform-input-focus);
 }
 
 /* Drag feedback: the row lights up while files hover over it. */
-.pth-file-row.pth-dragging input[type="file"] {
+.pth-root .pth-file-row.pth-dragging input[type="file"] {
     border-color: var(--pth-input-focus);
     background: var(--pth-focus-shadow);
 }
 
 /* The + button appends more files to a multiple selection. */
-.pth-file-add {
+.pth-root .pth-file-add {
     flex-shrink: 0;
     width: 3rem;
     min-width: 3rem;
     padding: 0;
-    color: #ffffff;
-    background: var(--pth-submit-bg);
+    color: var(--pth-submit-text);
+    background: var(--pth-submit-background);
     border: none;
     border-radius: var(--pth-radius-base);
     font-size: 1.25rem;
@@ -743,31 +839,31 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file-add:hover {
+.pth-root .pth-file-add:hover {
     background: var(--pth-submit-hover);
     transform: var(--pth-transform-button-hover);
     box-shadow: var(--pth-shadow-button-hover);
 }
 
-.pth-file-add:active {
+.pth-root .pth-file-add:active {
     transform: scale(0.96);
     box-shadow: var(--pth-shadow-button-active);
 }
 
-.pth-file-add:focus-visible {
+.pth-root .pth-file-add:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: var(--pth-focus-offset);
 }
 
 /* ↺ Restore: a neutral square button beside the choose control, shown only
    after Replace to undo it. */
-.pth-file-restore {
+.pth-root .pth-file-restore {
     flex-shrink: 0;
     width: 3rem;
     min-width: 3rem;
     padding: 0;
     color: var(--pth-label-color);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     font-size: 1.25rem;
@@ -776,19 +872,19 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file-restore:hover {
+.pth-root .pth-file-restore:hover {
     color: var(--pth-input-focus);
     border-color: var(--pth-input-focus);
     transform: var(--pth-transform-button-hover);
 }
 
-.pth-file-restore:focus-visible {
+.pth-root .pth-file-restore:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: var(--pth-focus-offset);
 }
 
 /* The list of chosen files, one card each (name + size + ✕). */
-.pth-file-list {
+.pth-root .pth-file-list {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap);
@@ -798,24 +894,24 @@
     scrollbar-color: var(--pth-input-border) transparent;
 }
 
-.pth-file-list:empty {
+.pth-root .pth-file-list:empty {
     display: none;
 }
 
-.pth-file-item {
+.pth-root .pth-file-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--pth-gap);
     padding: 0.625rem;
     min-width: 0;
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
     transition: var(--pth-transition-base);
 }
 
-.pth-file-info {
+.pth-root .pth-file-info {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-small);
@@ -824,7 +920,7 @@
     overflow: hidden;
 }
 
-.pth-file-name {
+.pth-root .pth-file-name {
     font-size: var(--pth-font-size-small);
     font-weight: var(--pth-font-weight-semibold);
     color: var(--pth-label-color);
@@ -833,12 +929,12 @@
     white-space: nowrap;
 }
 
-.pth-file-size {
+.pth-root .pth-file-size {
     font-size: 0.75rem;
     color: var(--pth-description-color);
 }
 
-.pth-file-remove {
+.pth-root .pth-file-remove {
     flex-shrink: 0;
     width: 1.75rem;
     height: 1.75rem;
@@ -856,30 +952,30 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file-remove:hover {
+.pth-root .pth-file-remove:hover {
     color: var(--pth-error-color);
     background: var(--pth-neutral-hover);
 }
 
-.pth-file-remove:focus-visible {
+.pth-root .pth-file-remove:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: var(--pth-focus-offset);
 }
 
 /* The "current file" display setValue() shows: existing files to keep, each a
    label, with one ✕ to drop the mode. Styled to match the chosen-file cards. */
-.pth-file-current {
+.pth-root .pth-file-current {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: var(--pth-gap);
     padding: 0.625rem;
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-base);
 }
 
-.pth-file-current-label {
+.pth-root .pth-file-current-label {
     font-size: var(--pth-font-size-small);
     font-weight: var(--pth-font-weight-semibold);
     color: var(--pth-label-color);
@@ -888,11 +984,11 @@
     white-space: nowrap;
 }
 
-.pth-file-current-replace {
+.pth-root .pth-file-current-replace {
     flex-shrink: 0;
     padding: 0.375rem 0.875rem;
     color: var(--pth-label-color);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width) solid var(--pth-input-border);
     border-radius: var(--pth-radius-small);
     font-size: var(--pth-font-size-small);
@@ -903,36 +999,36 @@
     transition: var(--pth-transition-base);
 }
 
-.pth-file-current-replace:hover {
-    color: #ffffff;
+.pth-root .pth-file-current-replace:hover {
+    color: var(--pth-submit-text);
     background: var(--pth-input-focus);
     border-color: var(--pth-input-focus);
     transform: var(--pth-transform-input-focus);
 }
 
-.pth-file-current-replace:focus-visible {
+.pth-root .pth-file-current-replace:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: var(--pth-focus-offset);
 }
 
 /* ===== Choice and group containers ===== */
 
-.pth-choice {
+.pth-root .pth-choice {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap);
-    border-left: var(--pth-border-width-thin) solid var(--pth-choice-border-color);
+    border-left: var(--pth-border-width-thin) solid var(--pth-input-border);
     padding-left: var(--pth-nesting-indent);
 }
 
-.pth-mode-navigation {
+.pth-root .pth-mode-navigation {
     display: grid;
     grid-template-columns: 2.5rem 1fr 2.5rem;
     align-items: center;
     gap: 0.625rem;
 }
 
-.pth-mode-position {
+.pth-root .pth-mode-position {
     text-align: center;
     font-size: var(--pth-font-size-small);
     font-weight: var(--pth-font-weight-semibold);
@@ -940,8 +1036,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-.pth-mode-previous,
-.pth-mode-next {
+.pth-root .pth-mode-previous,
+.pth-root .pth-mode-next {
     width: 2.5rem;
     height: 2.5rem;
     padding: 0;
@@ -951,51 +1047,51 @@
     font-size: 1.25rem;
     line-height: 1;
     color: var(--pth-label-color);
-    background: var(--pth-input-bg);
+    background: var(--pth-input-background);
     border: var(--pth-border-width-thin) solid var(--pth-input-border);
     border-radius: var(--pth-radius-small);
     cursor: pointer;
     transition: var(--pth-transition-base);
 }
 
-.pth-mode-previous:hover:not(:disabled),
-.pth-mode-next:hover:not(:disabled) {
+.pth-root .pth-mode-previous:hover:not(:disabled),
+.pth-root .pth-mode-next:hover:not(:disabled) {
     border-color: var(--pth-input-focus);
     color: var(--pth-input-focus);
     background: var(--pth-neutral-hover);
 }
 
-.pth-mode-previous:disabled,
-.pth-mode-next:disabled {
+.pth-root .pth-mode-previous:disabled,
+.pth-root .pth-mode-next:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-.pth-mode-content {
+.pth-root .pth-mode-content {
     display: flex;
     flex-direction: column;
 }
 
-.pth-group {
+.pth-root .pth-group {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap-field);
-    border-left: var(--pth-border-width-thin) solid var(--pth-group-border-color);
+    border-left: var(--pth-border-width-thin) solid var(--pth-input-border);
     padding-left: var(--pth-nesting-indent);
 }
 
 /* ===== List ===== */
 
-.pth-list {
+.pth-root .pth-list {
     display: flex;
     flex-direction: column;
     gap: var(--pth-gap);
     align-items: flex-start;
-    border-left: var(--pth-border-width-thin) solid var(--pth-list-border-color);
+    border-left: var(--pth-border-width-thin) solid var(--pth-input-border);
     padding-left: var(--pth-nesting-indent);
 }
 
-.pth-list-items {
+.pth-root .pth-list-items {
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
@@ -1003,42 +1099,42 @@
     counter-reset: pth-item;
 }
 
-.pth-list-items:empty {
+.pth-root .pth-list-items:empty {
     display: none;
 }
 
-.pth-list-item {
+.pth-root .pth-list-item {
     display: grid;
     grid-template-columns: 1fr 2rem;
     gap: var(--pth-gap);
     align-items: start;
     counter-increment: pth-item;
     padding: 0.625rem;
-    border: var(--pth-border-width-thin) solid var(--pth-item-border-color);
-    border-radius: var(--pth-item-radius);
-    background: var(--pth-item-background);
+    border: var(--pth-border-width-thin) solid var(--pth-input-border);
+    border-radius: var(--pth-radius-small);
+    background: var(--pth-input-background);
     min-width: 0;
 }
 
-.pth-list-item::before {
+.pth-root .pth-list-item::before {
     content: counter(pth-item);
     grid-column: 1;
     grid-row: 1;
     align-self: center;
     font-size: var(--pth-font-size-small);
-    color: var(--pth-index-color);
+    color: var(--pth-description-color);
     font-variant-numeric: tabular-nums;
     pointer-events: none;
 }
 
-.pth-list-item-content {
+.pth-root .pth-list-item-content {
     grid-column: 1;
     grid-row: 1;
     min-width: 0;
     padding-left: 1.5rem;
 }
 
-.pth-list-item > .pth-list-remove {
+.pth-root .pth-list-item > .pth-list-remove {
     grid-column: 2;
     grid-row: 1;
     /* Centred against the item, whatever the content height. No fixed offset,
@@ -1046,12 +1142,12 @@
     align-self: center;
 }
 
-.pth-list-item .pth-list-item {
-    background: var(--pth-item-nested-background);
+.pth-root .pth-list-item .pth-list-item {
+    background: var(--pth-nested-background);
 }
 
 /* Lighter remove control: an icon, neutral by default, red on hover or focus. */
-.pth-list-remove {
+.pth-root .pth-list-remove {
     width: 2rem;
     height: 2rem;
     padding: 0;
@@ -1067,23 +1163,38 @@
     justify-content: center;
 }
 
-.pth-list-remove:hover,
-.pth-list-remove:focus-visible {
+.pth-root .pth-list-remove:hover,
+.pth-root .pth-list-remove:focus-visible {
     color: var(--pth-error-color);
     background: var(--pth-neutral-hover);
     border-color: var(--pth-input-border);
     transform: scale(1.05);
 }
 
-.pth-list-remove svg {
+/* The icon is a file, painted through a mask so it still takes its colour from
+   the button — neutral by default, --pth-error-color on hover or focus. An
+   <img> or a background-image could not do that: an external SVG has no access
+   to the page's currentColor. If the file does not load the glyph is simply not
+   painted — measured, not assumed — and the button keeps its size, its
+   accessible name and its behaviour. */
+.pth-root .pth-list-remove-icon {
     display: block;
     width: 1.125rem;
     height: 1.125rem;
+    background-color: currentColor;
+    -webkit-mask-image: var(--pth-icon-trash);
+    mask-image: var(--pth-icon-trash);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
     pointer-events: none;
 }
 
 /* Compact text add button below the list, with a decorative plus. */
-.pth-list-add {
+.pth-root .pth-list-add {
     align-self: flex-start;
     display: inline-flex;
     align-items: center;
@@ -1093,41 +1204,41 @@
     font-size: var(--pth-font-size-small);
     font-weight: var(--pth-font-weight-semibold);
     font-family: var(--pth-font-family);
-    color: #ffffff;
-    background: var(--pth-submit-bg);
-    border: var(--pth-border-width) solid var(--pth-submit-bg);
+    color: var(--pth-submit-text);
+    background: var(--pth-submit-background);
+    border: var(--pth-border-width) solid var(--pth-submit-background);
     border-radius: var(--pth-radius-base);
     cursor: pointer;
     box-shadow: var(--pth-shadow-button);
     transition: var(--pth-transition-base);
 }
 
-.pth-list-add::before {
+.pth-root .pth-list-add::before {
     content: "+";
     font-size: 1.125rem;
     line-height: 1;
 }
 
-.pth-list-add:hover:not(:disabled) {
+.pth-root .pth-list-add:hover:not(:disabled) {
     background: var(--pth-submit-hover);
     border-color: var(--pth-submit-hover);
     transform: var(--pth-transform-button-hover);
     box-shadow: var(--pth-shadow-button-hover);
 }
 
-.pth-list-add:active:not(:disabled) {
+.pth-root .pth-list-add:active:not(:disabled) {
     transform: none;
     box-shadow: var(--pth-shadow-button-active);
 }
 
-.pth-list-add[disabled],
-.pth-list-remove[disabled] {
+.pth-root .pth-list-add[disabled],
+.pth-root .pth-list-remove[disabled] {
     opacity: 0.45;
     cursor: not-allowed;
 }
 
-.pth-list-add[disabled]:hover,
-.pth-list-remove[disabled]:hover {
+.pth-root .pth-list-add[disabled]:hover,
+.pth-root .pth-list-remove[disabled]:hover {
     transform: none;
 }
 
@@ -1139,21 +1250,21 @@
  * border and halo win while focused.
  */
 
-.pth-str input[aria-invalid="true"],
-.pth-str textarea[aria-invalid="true"],
-.pth-int input[aria-invalid="true"],
-.pth-float input[aria-invalid="true"],
-.pth-date input[aria-invalid="true"],
-.pth-time input[aria-invalid="true"] {
+.pth-root .pth-str input[aria-invalid="true"],
+.pth-root .pth-str textarea[aria-invalid="true"],
+.pth-root .pth-int input[aria-invalid="true"],
+.pth-root .pth-float input[aria-invalid="true"],
+.pth-root .pth-date input[aria-invalid="true"],
+.pth-root .pth-time input[aria-invalid="true"] {
     border-color: var(--pth-error-color);
 }
 
-.pth-str input[aria-invalid="true"]:focus,
-.pth-str textarea[aria-invalid="true"]:focus,
-.pth-int input[aria-invalid="true"]:focus,
-.pth-float input[aria-invalid="true"]:focus,
-.pth-date input[aria-invalid="true"]:focus,
-.pth-time input[aria-invalid="true"]:focus {
+.pth-root .pth-str input[aria-invalid="true"]:focus,
+.pth-root .pth-str textarea[aria-invalid="true"]:focus,
+.pth-root .pth-int input[aria-invalid="true"]:focus,
+.pth-root .pth-float input[aria-invalid="true"]:focus,
+.pth-root .pth-date input[aria-invalid="true"]:focus,
+.pth-root .pth-time input[aria-invalid="true"]:focus {
     border-color: var(--pth-error-color);
     box-shadow: var(--pth-shadow-error);
 }
@@ -1168,76 +1279,79 @@
  * visible under forced-colors / high-contrast mode.
  */
 
-.pth-str input:focus-visible,
-.pth-str textarea:focus-visible,
-.pth-int input[type="text"]:focus-visible,
-.pth-float input[type="text"]:focus-visible,
-.pth-date input:focus-visible,
-.pth-time input:focus-visible,
-.pth-choice-input:focus-visible {
+.pth-root .pth-str input:focus-visible,
+.pth-root .pth-str textarea:focus-visible,
+.pth-root .pth-int input[type="text"]:focus-visible,
+.pth-root .pth-float input[type="text"]:focus-visible,
+.pth-root .pth-date input:focus-visible,
+.pth-root .pth-time input:focus-visible,
+.pth-root .pth-choice-input:focus-visible {
     outline: var(--pth-focus-width) solid transparent;
     outline-offset: var(--pth-focus-offset);
 }
 
 /* Controls with no halo of their own keep a solid, visible outline. */
-.pth-int input[type="range"]:focus-visible,
-.pth-toggle:focus-visible,
-.pth-bool input[type="checkbox"]:focus-visible,
-.pth-mode-previous:focus-visible,
-.pth-mode-next:focus-visible,
-.pth-list-add:focus-visible,
-.pth-list-remove:focus-visible {
+.pth-root .pth-int input[type="range"]:focus-visible,
+.pth-root .pth-toggle:focus-visible,
+.pth-root .pth-bool input[type="checkbox"]:focus-visible,
+.pth-root .pth-mode-previous:focus-visible,
+.pth-root .pth-mode-next:focus-visible,
+.pth-root .pth-list-add:focus-visible,
+.pth-root .pth-list-remove:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: var(--pth-focus-offset);
 }
 
 /* The stepper buttons sit inside the input, so their outline is inset. */
-.pth-number-btn:focus-visible {
+.pth-root .pth-number-btn:focus-visible {
     outline: var(--pth-focus-width) solid var(--pth-focus-color);
     outline-offset: calc(-1 * var(--pth-focus-width));
 }
 
-/* ===== Reduced motion ===== */
+/* ===== Reduced motion =====
+ *
+ * Independent of the theme: it removes movement, never colour.
+ */
 
 @media (prefers-reduced-motion: reduce) {
-    .pth-str input[type="text"],
-    .pth-str input[type="password"],
-    .pth-str textarea,
-    .pth-int input[type="text"],
-    .pth-float input[type="text"],
-    .pth-date input,
-    .pth-time input,
-    .pth-int input[type="range"],
-    .pth-int input[type="range"]::-webkit-slider-thumb,
-    .pth-int input[type="range"]::-moz-range-thumb,
-    .pth-number-controls,
-    .pth-number-btn,
-    .pth-choice-input,
-    .pth-toggle,
-    .pth-toggle::before,
-    .pth-bool input[type="checkbox"],
-    .pth-bool input[type="checkbox"]::before,
-    .pth-list-add,
-    .pth-list-remove,
-    .pth-mode-previous,
-    .pth-mode-next {
+    .pth-root .pth-str input[type="text"],
+    .pth-root .pth-str input[type="password"],
+    .pth-root .pth-str textarea,
+    .pth-root .pth-int input[type="text"],
+    .pth-root .pth-float input[type="text"],
+    .pth-root .pth-date input,
+    .pth-root .pth-time input,
+    .pth-root .pth-int input[type="range"],
+    .pth-root .pth-int input[type="range"]::-webkit-slider-thumb,
+    .pth-root .pth-int input[type="range"]::-moz-range-thumb,
+    .pth-root .pth-number-controls,
+    .pth-root .pth-number-btn,
+    .pth-root .pth-choice-input,
+    .pth-root .pth-toggle,
+    .pth-root .pth-toggle::before,
+    .pth-root .pth-bool input[type="checkbox"],
+    .pth-root .pth-bool input[type="checkbox"]::before,
+    .pth-root .pth-list-add,
+    .pth-root .pth-list-remove,
+    .pth-root .pth-mode-previous,
+    .pth-root .pth-mode-next {
         transition: none;
     }
 
-    .pth-str input:focus,
-    .pth-str textarea:focus,
-    .pth-int input[type="text"]:focus,
-    .pth-float input[type="text"]:focus,
-    .pth-date input:focus,
-    .pth-time input:focus,
-    .pth-number input:focus + .pth-number-controls,
-    .pth-choice-input:focus,
-    .pth-int input[type="range"]::-webkit-slider-thumb:hover,
-    .pth-int input[type="range"]::-webkit-slider-thumb:active,
-    .pth-int input[type="range"]::-moz-range-thumb:hover,
-    .pth-list-add:hover,
-    .pth-list-remove:hover,
-    .pth-list-remove:focus-visible {
+    .pth-root .pth-str input:focus,
+    .pth-root .pth-str textarea:focus,
+    .pth-root .pth-int input[type="text"]:focus,
+    .pth-root .pth-float input[type="text"]:focus,
+    .pth-root .pth-date input:focus,
+    .pth-root .pth-time input:focus,
+    .pth-root .pth-number input:focus + .pth-number-controls,
+    .pth-root .pth-choice-input:focus,
+    .pth-root .pth-int input[type="range"]::-webkit-slider-thumb:hover,
+    .pth-root .pth-int input[type="range"]::-webkit-slider-thumb:active,
+    .pth-root .pth-int input[type="range"]::-moz-range-thumb:hover,
+    .pth-root .pth-list-add:hover,
+    .pth-root .pth-list-remove:hover,
+    .pth-root .pth-list-remove:focus-visible {
         transform: none;
     }
 }

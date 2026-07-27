@@ -783,7 +783,11 @@ Invariants:
 Required: `kind`, `options`. `IsPathFile` on a `str` produces a `file` node. Its
 value is a reference string the browser widget **generates locally** when the
 user picks a file — the file's name compressed to bare ASCII (15 characters at
-most), a UUID, and the file's lowercased extension.
+most), a UUID, and the file's lowercased extension. It is a reference, not a
+path: turning it into something the core can certify is the host's, through
+`decode(..., file_resolver=...)`. The plan carries no byte-size bounds —
+`IsPathFile(min_size=...)` / `max_size=...` are refused at compile rather than
+dropped, since the widget could not enforce them.
 
 ```json
 {
@@ -805,13 +809,17 @@ most), a UUID, and the file's lowercased extension.
 ```
 
 The widget mints the reference on choice and `read()` carries it at once. A file
-node has **no default** — that is a property of the plan, not of `setValue`: at
-runtime `setValue(string)` may plant an *existing* reference (the host's own
-truth), shown as a "current file" and transported verbatim, but a plan is a static
-artefact (cacheable, serialisable, hand-written) and a frozen reference in it is a
-promise nobody renews, so the compiler refuses it. On the wire a file is a `str`
-(a `list[str]` when `multiple`), so nothing about the transport or `decode()`
-changes. See
+node **may carry a default**, and it means an *existing* reference the host
+declares — the same thing `setValue(string)` plants at runtime, and by the same
+route: the compiler applies the default through `setValue()`. It is shown as a
+"current file", transported verbatim, and it starts no upload; it is not a local
+selection, so `file()` and `files()` stay empty. A single node takes a `str`, a
+`multiple` one a `list[str]`, and an optional file takes `null` for its off
+state. Nothing in the browser checks that bytes stand behind the reference — an
+expired one shows fine and fails when the host resolves it, which is correct
+because the form and the storage are different layers. On the wire a file is a
+`str` (a `list[str]` when `multiple`), so nothing about the transport or
+`decode()` changes. See
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
 Invariants:
@@ -822,6 +830,11 @@ Invariants:
   — is `value.lower().endswith(ext)`: a filter for honest mistakes, never a check
   that the reference resolves to bytes. The widget mints the reference with the
   matched extension, so it passes that same filter downstream.
+- A `file` node composes like any other: it is legal wherever a node is, so a
+  `list` whose item is a `file`, an `optional` over one, a `choice` branch and an
+  `object` field all work, at any depth. `multiple` (from a bare `list[File]`) is
+  a dedicated representation for the one shape users expect it for, not a rule
+  about the others.
 - `multiple` (from `list[File]`) makes `value()` an array — one reference per
   file, minted from a single selection. `minFiles`/`maxFiles` are file-count
   bounds (`minMessage`/`maxMessage` their `{value}` templates); both must be
@@ -832,9 +845,73 @@ Invariants:
   `currentReplaceLabel` drive the current-file display `setValue()` opens;
   `currentRestoreLabel` labels the ↺ that undoes a replace, and
   `currentRemoveLabel` the ✕ on each chosen-file card.
-- A file node carries **no default**: a `hasDefault` field over a file node is
-  rejected at `<path>.default`, single or multiple, including the `null` of a
-  switched-off optional (whose off state is its toggle instead).
+A field declaring an existing file, single and multiple:
+
+```json
+{
+  "name": "document",
+  "label": "Document",
+  "description": null,
+  "optional": false,
+  "enabled": true,
+  "hasDefault": true,
+  "default": "stored/document.pdf",
+  "node": {
+    "kind": "file",
+    "options": {
+      "extensions": [".pdf"],
+      "invalidMessage": "Not an accepted file type",
+      "multiple": false,
+      "minFiles": null,
+      "maxFiles": null,
+      "minMessage": "Add at least {value} files",
+      "maxMessage": "Keep at most {value} files",
+      "currentLabel": "Current file: {value}",
+      "currentRemoveLabel": "Remove current file",
+      "currentReplaceLabel": "Replace file",
+      "currentRestoreLabel": "Restore current file"
+    }
+  }
+}
+```
+
+```json
+{
+  "name": "documents",
+  "label": "Documents",
+  "description": null,
+  "optional": false,
+  "enabled": true,
+  "hasDefault": true,
+  "default": ["stored/one.pdf", "stored/two.pdf"],
+  "node": {
+    "kind": "file",
+    "options": {
+      "extensions": [".pdf"],
+      "invalidMessage": "Not an accepted file type",
+      "multiple": true,
+      "minFiles": null,
+      "maxFiles": null,
+      "minMessage": "Add at least {value} files",
+      "maxMessage": "Keep at most {value} files",
+      "currentLabel": "Current file: {value}",
+      "currentRemoveLabel": "Remove current file",
+      "currentReplaceLabel": "Replace file",
+      "currentRestoreLabel": "Restore current file"
+    }
+  }
+}
+```
+
+Invariants (continued):
+
+- A file **default** is checked for shape at `<path>.default`: a `str` for a
+  single node and an array of `str` for a `multiple` one — the wrong arity is
+  rejected either way — each reference non-empty and passing the same
+  `endswith` extension filter, and a multiple default within `minFiles` and
+  `maxFiles`. An optional file may default to `null`, which is its off state.
+  The plan checks the shape; `FileWidget.setValue()` owns the semantics and is
+  what actually applies the value.
 - On the wire a file is a JSON string with option id `"str"` (it is a `Str`), so
   it shares the string transport with `str`, `date`, `time` and `enum`. A union
   of a plain `str` and a file is **inconstructible**: both branches have option

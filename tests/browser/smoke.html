@@ -15,16 +15,23 @@
     chrome --headless=new --disable-gpu --allow-file-access-from-files \
       --virtual-time-budget=8000 --dump-dom "$SMOKE_URL" | grep 'id="result"'
 
-  Expect a single line with "SMOKE: PASS (N checks)". A "FAIL" line names the
-  check. Opening the page served over http:// works too; loading it as a file
-  needs the --allow-file-access-from-files flag for the module imports.
+  Expect the #result element to read "SMOKE: PASS (N checks)". A "FAIL" line
+  names the check. Read the verdict from that element, never from a bare text
+  match: this comment contains the same words, so an unanchored grep would say
+  PASS whatever the page did. Opening the page served over http:// works too;
+  loading it as a file needs the --allow-file-access-from-files flag for the
+  module imports.
 -->
 <div id="host"></div>
 <pre id="out">running…</pre>
 <div id="result">PENDING</div>
 <script type="module">
-const { compileForm } = await import("../../src/pytypehintweb/static/form.js");
-const { expandPlan } = await import("../js/plan-fixture.mjs");
+// Static imports on purpose. With `await import(...)` at the top level the
+// module settles after the load event, so --dump-dom raced it and captured
+// "PENDING" about half the time. They bought nothing either: the try/catch
+// below starts after them, so an import failure was never caught by it.
+import { compileForm } from "../../src/pytypehintweb/static/form.js";
+import { expandPlan } from "../js/plan-fixture.mjs";
 
 const log = [];
 let failed = 0;
@@ -57,6 +64,39 @@ try {
                 kind: "list", item: { kind: "str" } } },
             { name: "doc", label: "Doc", node: {
                 kind: "file", options: { multiple: true } } },
+            { name: "kept", label: "Kept", hasDefault: true,
+              default: "stored/report.pdf",
+              node: { kind: "file", options: { extensions: [".pdf"] } } },
+            { name: "keptMany", label: "Kept many", hasDefault: true,
+              default: ["stored/one.pdf", "stored/two.pdf"],
+              node: { kind: "file",
+                      options: { multiple: true, extensions: [".pdf"] } } },
+            // A file composes like any other node; these four shapes are the
+            // ones the Python adapter used to refuse outright.
+            { name: "holes", label: "Holes", hasDefault: true,
+              default: ["stored/a.pdf", null],
+              node: { kind: "list",
+                      item: { kind: "optional", node: { kind: "file",
+                                                        options: {} } } } },
+            { name: "mixed", label: "Mixed", hasDefault: true,
+              default: [{ branch: 0, value: "stored/b.pdf" },
+                        { branch: 1, value: 7 }],
+              node: { kind: "list", item: { kind: "choice", branches: [
+                  { value: "str", mode: "plain",
+                    node: { kind: "file", options: {} } },
+                  { value: "int", mode: "plain", node: { kind: "int" } },
+              ] } } },
+            { name: "nested", label: "Nested", hasDefault: true,
+              default: [["stored/c.pdf"], ["stored/d.pdf", "stored/e.pdf"]],
+              node: { kind: "list",
+                      item: { kind: "list",
+                              item: { kind: "file", options: {} } } } },
+            { name: "rows", label: "Rows", hasDefault: true,
+              default: [{ title: "one", document: "stored/f.pdf" }],
+              node: { kind: "list", item: { kind: "object", fields: [
+                  { name: "title", node: { kind: "str" } },
+                  { name: "document", node: { kind: "file", options: {} } },
+              ] } } },
         ],
     });
 
@@ -140,6 +180,82 @@ try {
     const file = by("doc").widget;
     check("file add button has a descriptive name",
           file.addBtn.getAttribute("aria-label") === "Add file");
+
+    // a file default is an existing reference: shown as the current file, ready,
+    // and with nothing local behind it
+    const kept = by("kept").widget;
+    check("a file default arrives as the widget's value",
+          kept.value() === "stored/report.pdf");
+    check("a file default is not a local selection",
+          kept.file() === null && kept.files().length === 0);
+    check("a file default has nothing to upload", kept.uploads().length === 0);
+    check("a file default shows on screen as the current file",
+          kept.el.textContent.includes("stored/report.pdf"));
+    check("a defaulted file field is ready", kept.isReady());
+
+
+    // A file composes recursively: these four shapes used to be refused
+    // outright. Checked before any local pick, so uploads() is still empty.
+    const same = (got, want) => JSON.stringify(got) === JSON.stringify(want);
+
+    check("a list of optional files reads its holes",
+          same(form.read().holes, ["stored/a.pdf", null]));
+    check("a list of file-or-int rows reads both branches",
+          same(form.read().mixed, ["stored/b.pdf", 7]));
+    check("a nested list keeps both levels",
+          same(form.read().nested,
+               [["stored/c.pdf"], ["stored/d.pdf", "stored/e.pdf"]]));
+    check("a list of groups reads a file per row",
+          same(form.read().rows, [{ title: "one", document: "stored/f.pdf" }]));
+
+    check("no deep default counts as an upload", form.uploads().length === 0);
+    check("every deeply defaulted field is ready",
+          ["holes", "mixed", "nested", "rows"].every((n) => by(n).isReady()));
+    check("no deeply defaulted field is in error",
+          ["holes", "mixed", "nested", "rows"].every((n) => !by(n).hasError()));
+
+    // A real pick two levels down, with a real File: the only upload there is.
+    const deep = new DataTransfer();
+    deep.items.add(new File(["bytes"], "deep.pdf", { type: "application/pdf" }));
+
+    const innerFile = by("nested").widget.widgets()[0].widgets()[0];
+    innerFile.control().files = deep.files;
+    innerFile.control().dispatchEvent(new Event("change"));
+
+    check("a pick inside a nested list is found as an upload",
+          form.uploads().length === 1
+          && form.uploads()[0].file.name === "deep.pdf");
+    check("the untouched rows keep their references",
+          same(form.read().rows, [{ title: "one", document: "stored/f.pdf" }]));
+
+    // Replacing it with a real local pick swaps both the value and the state.
+    // `input.files` is a read-only FileList in a real browser, so the pick is
+    // staged through DataTransfer — which is also the only way to get a genuine
+    // File object here, and the fake DOM cannot.
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["bytes"], "replacement.pdf",
+                                { type: "application/pdf" }));
+    kept.input.files = transfer.files;
+    kept.input.dispatchEvent(new Event("change"));
+
+    check("picking a file replaces the defaulted reference",
+          kept.value() !== "stored/report.pdf" && kept.value().endsWith(".pdf"));
+    check("a picked file is local and pending",
+          kept.files().length === 1 && kept.uploads().length === 1);
+
+    // a list[File] default lands as a multiple selection of existing references
+    const many = by("keptMany").widget;
+    check("a list default keeps its references in order",
+          JSON.stringify(many.value())
+          === JSON.stringify(["stored/one.pdf", "stored/two.pdf"]));
+    check("a list default holds no local files",
+          many.files().length === 0 && many.uploads().length === 0);
+    check("a list default shows both current files",
+          many.el.textContent.includes("stored/one.pdf")
+          && many.el.textContent.includes("stored/two.pdf"));
+    check("a list default keeps read() in order",
+          JSON.stringify(form.read().keptMany)
+          === JSON.stringify(["stored/one.pdf", "stored/two.pdf"]));
 
     // showErrors does not throw and does not alter read()
     form.showErrors();

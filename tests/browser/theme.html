@@ -1,0 +1,236 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>pytypehintweb theme check</title>
+<link rel="stylesheet" href="../../src/pytypehintweb/static/widgets.css"></head>
+<body>
+<!--
+  The theme contract of widgets.css, resolved by a real cascade.
+
+  The Python suite reads the stylesheet as text: it can prove the blocks exist,
+  that they assign the same tokens and that the palettes clear their contrast
+  thresholds, but not that the cascade lands where it should. Specificity,
+  inheritance and proximity only exist in a browser, and the whole contract —
+  automatic mode, an override winning from the root or from an ancestor, the
+  nearest one winning, two roots disagreeing on one page — is exactly that.
+  Neither can text prove the other half: that loading the sheet leaves the host
+  document alone.
+
+  Deliberately plain: no ES modules, no imports, no JavaScript from the library.
+  The page is HTML, CSS and one inline script that reads computed styles, which
+  is also why it never races the virtual-time budget the way smoke.html would.
+  The markup mirrors the class structure the widgets compile to; this page tests
+  the stylesheet, and the classes are its whole interface.
+
+  Run headless (Chromium/Chrome), capturing the verdict from the DOM, where
+  $THEME_URL is an absolute file:// URL to this page:
+
+    chrome --headless=new --disable-gpu --allow-file-access-from-files \
+      --virtual-time-budget=8000 --dump-dom "$THEME_URL" | grep 'id="result"'
+
+  Expect "THEME: PASS (N checks)". A FAIL line names the checks that failed.
+  Run it twice, forcing each system preference, to cover automatic mode both
+  ways: --blink-settings=preferredColorScheme=0 is dark, =1 is light.
+-->
+
+<!-- Cascade fixture. Every combination the contract promises. -->
+<div id="auto" class="pth-root"></div>
+<div id="forced-dark" class="pth-root" data-pth-theme="dark"></div>
+<div id="forced-light" class="pth-root" data-pth-theme="light"></div>
+
+<div data-pth-theme="dark"><div id="under-dark" class="pth-root"></div></div>
+<div data-pth-theme="light"><div id="under-light" class="pth-root"></div></div>
+
+<div data-pth-theme="dark">
+  <div id="light-under-dark" class="pth-root" data-pth-theme="light"></div>
+</div>
+<div data-pth-theme="light">
+  <div id="dark-under-light" class="pth-root" data-pth-theme="dark"></div>
+</div>
+
+<div data-pth-theme="dark">
+  <div data-pth-theme="light"><div id="nearest-light" class="pth-root"></div></div>
+</div>
+<div data-pth-theme="light">
+  <div data-pth-theme="dark"><div id="nearest-dark" class="pth-root"></div></div>
+</div>
+
+<!-- Native controls, one of each, in a root of each theme. -->
+<div id="controls-dark" class="pth-root" data-pth-theme="dark">
+  <div class="pth-str"><input class="t" type="text"><textarea class="a"></textarea></div>
+  <div class="pth-int"><input class="i" type="text"></div>
+  <div class="pth-float"><input class="f" type="text"></div>
+  <div class="pth-date"><input class="d" type="date"></div>
+  <div class="pth-time"><input class="h" type="time"></div>
+  <select class="pth-choice-input s"><option>a</option></select>
+  <div class="pth-file"><input class="u" type="file"></div>
+  <input class="pth-toggle g" type="checkbox">
+  <button class="pth-list-remove"><span class="pth-list-remove-icon k"></span></button>
+</div>
+
+<div id="controls-light" class="pth-root" data-pth-theme="light">
+  <div class="pth-str"><input class="t" type="text"><textarea class="a"></textarea></div>
+  <div class="pth-int"><input class="i" type="text"></div>
+  <div class="pth-float"><input class="f" type="text"></div>
+  <div class="pth-date"><input class="d" type="date"></div>
+  <div class="pth-time"><input class="h" type="time"></div>
+  <select class="pth-choice-input s"><option>a</option></select>
+  <div class="pth-file"><input class="u" type="file"></div>
+  <input class="pth-toggle g" type="checkbox">
+  <button class="pth-list-remove"><span class="pth-list-remove-icon k"></span></button>
+</div>
+
+<!-- Deep nesting inside a deliberately narrow root: indentation and padding
+     must not push content past the container. -->
+<div id="narrow" class="pth-root" style="width: 240px">
+  <div class="pth-field">
+    <div class="pth-group">
+      <div class="pth-field">
+        <div class="pth-list">
+          <div class="pth-list-items">
+            <div class="pth-list-item">
+              <div class="pth-list-item-content">
+                <div class="pth-str"><input type="text"></div>
+              </div>
+              <button class="pth-list-remove"></button>
+            </div>
+          </div>
+          <button class="pth-list-add">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Host chrome. Nothing here carries a pth-* class, so nothing here may move. -->
+<div id="host-chrome">
+  <input id="host-input" type="text">
+  <button id="host-button">host</button>
+  <label id="host-label">host</label>
+  <select id="host-select"><option>a</option></select>
+  <textarea id="host-textarea"></textarea>
+</div>
+
+<pre id="out">running…</pre>
+<div id="result">PENDING</div>
+
+<script>
+const log = [];
+let failed = 0;
+
+function check(name, got, want) {
+    const ok = got === want;
+    log.push(`${ok ? "ok  " : "FAIL"}  ${name}`
+             + (ok ? "" : `   got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`));
+    if (!ok) failed += 1;
+}
+
+const style = (id) => getComputedStyle(document.getElementById(id));
+const surface = (id) => style(id).backgroundColor;
+const within = (id, selector) =>
+    getComputedStyle(document.getElementById(id).querySelector(selector));
+
+const DARK = surface("forced-dark");
+const LIGHT = surface("forced-light");
+const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+
+// --- the palettes are actually two ---
+check("the two forced themes differ", DARK !== LIGHT, true);
+
+// --- automatic ---
+check("automatic follows the system preference",
+      surface("auto"), systemDark ? DARK : LIGHT);
+
+// --- manual, on the root ---
+check("dark forced on the root", surface("forced-dark"), DARK);
+check("light forced on the root", surface("forced-light"), LIGHT);
+
+// --- manual, from an ancestor ---
+check("dark from an ancestor", surface("under-dark"), DARK);
+check("light from an ancestor", surface("under-light"), LIGHT);
+
+// --- the root beats its ancestor ---
+check("light root inside a dark ancestor", surface("light-under-dark"), LIGHT);
+check("dark root inside a light ancestor", surface("dark-under-light"), DARK);
+
+// --- the nearest ancestor wins ---
+check("nearest ancestor wins (light)", surface("nearest-light"), LIGHT);
+check("nearest ancestor wins (dark)", surface("nearest-dark"), DARK);
+
+// --- two roots disagreeing on one page ---
+check("two roots hold different themes at once",
+      surface("forced-dark") !== surface("forced-light"), true);
+
+// --- controls follow their own root ---
+for (const [name, selector] of [
+    ["text", ".t"], ["textarea", ".a"], ["int", ".i"], ["float", ".f"],
+    ["date", ".d"], ["time", ".h"], ["select", ".s"], ["file", ".u"],
+]) {
+    check(`${name} takes the color-scheme of its dark root`,
+          within("controls-dark", selector).colorScheme, "dark");
+    check(`${name} takes the color-scheme of its light root`,
+          within("controls-light", selector).colorScheme, "light");
+}
+
+check("a control is painted by its own root, not the page",
+      within("controls-dark", ".t").backgroundColor
+      !== within("controls-light", ".t").backgroundColor, true);
+
+// A styling-only element gets no color-scheme: the property is for native
+// controls, and the switch is drawn entirely by the sheet.
+check("the switch claims no color-scheme",
+      within("controls-dark", ".g").colorScheme, "normal");
+
+// --- icons are files, resolved against the stylesheet ---
+const arrow = (id) => within(id, ".s").backgroundImage;
+const mask = (id) => within(id, ".k").maskImage || within(id, ".k").webkitMaskImage;
+
+check("the select arrow is not a data URI",
+      arrow("controls-light").includes("data:"), false);
+check("the light select arrow names its own file",
+      arrow("controls-light").includes("icons/select-arrow-light.svg"), true);
+check("the dark select arrow names its own file",
+      arrow("controls-dark").includes("icons/select-arrow-dark.svg"), true);
+
+// Relative URLs in CSS resolve against the stylesheet's URL, not the page's.
+// This document lives in tests/browser/ and the sheet in src/.../static/, so a
+// document-relative resolution would land somewhere else entirely.
+check("the arrow resolves next to the stylesheet, not next to the page",
+      arrow("controls-light").includes("/static/icons/"), true);
+
+check("the trash glyph is a mask, not a data URI",
+      mask("controls-dark").includes("icons/trash.svg")
+      && !mask("controls-dark").includes("data:"), true);
+check("the trash glyph takes the colour of its own root",
+      within("controls-dark", ".k").backgroundColor
+      !== within("controls-light", ".k").backgroundColor, true);
+
+// --- geometry: nesting must not overflow its container ---
+const narrow = document.getElementById("narrow");
+check("deep nesting does not overflow a narrow root",
+      narrow.scrollWidth <= narrow.clientWidth, true);
+check("the root itself adds no margin", style("narrow").margin, "0px");
+check("the root itself adds no padding", style("narrow").padding, "0px");
+
+// --- isolation: the host document must be untouched ---
+check("host input untouched", style("host-input").borderRadius, "0px");
+check("host button untouched", style("host-button").borderRadius, "0px");
+check("host select untouched", style("host-select").borderRadius, "0px");
+check("host textarea untouched", style("host-textarea").borderRadius, "0px");
+check("host label keeps its weight", style("host-label").fontWeight, "400");
+check("host element gets no token",
+      style("host-chrome").getPropertyValue("--pth-input-background"), "");
+check("the document keeps its own color-scheme",
+      getComputedStyle(document.documentElement).colorScheme, "normal");
+check("the body keeps its own color-scheme",
+      getComputedStyle(document.body).colorScheme, "normal");
+check("the body is not repainted",
+      getComputedStyle(document.body).backgroundColor, "rgba(0, 0, 0, 0)");
+
+document.getElementById("out").textContent =
+    log.join("\n") + `\n\nsystem preference: ${systemDark ? "dark" : "light"}`;
+document.getElementById("result").textContent = failed === 0
+    ? `THEME: PASS (${log.length} checks)`
+    : `THEME: FAIL (${failed})`;
+</script>
+</body>
+</html>

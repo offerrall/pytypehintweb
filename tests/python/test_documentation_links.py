@@ -2,26 +2,17 @@ import re
 from pathlib import Path
 
 import pytest
+from markdown_anchors import anchors
 
 ROOT = Path(__file__).resolve().parents[2]
 
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-HEADING = re.compile(r"^#+\s+(.*)$", re.MULTILINE)
 
 SELF = "https://github.com/offerrall/pytypehintweb/blob/main/"
 
 
 def documents():
     return sorted([ROOT / "README.md", *(ROOT / "docs").glob("*.md")])
-
-
-def slug(heading: str) -> str:
-    text = re.sub(r"`|\*|_", "", heading).strip().lower()
-    return re.sub(r"[^a-z0-9 -]", "", text).replace(" ", "-")
-
-
-def anchors(path: Path) -> set[str]:
-    return {slug(h) for h in HEADING.findall(path.read_text(encoding="utf-8"))}
 
 
 def relative_links():

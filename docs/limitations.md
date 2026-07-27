@@ -149,22 +149,49 @@ Replace/Restore cycle and the host's upload loop — is the
 [JavaScript API](javascript.md#values-completed-outside-the-browser)'s to
 describe. What is *limited* here:
 
-- `list[File]` is one `multiple` widget: several files in one selection, one
-  reference each, the list's `Min`/`Max` as file-count bounds. A file *inside* a
-  list any other way — an optional item, a union, a deeper nesting — is not
-  supported yet.
-- A file carries **no plan default**. A plan is a static artefact and a frozen
-  reference in it is a promise nobody renews, so `plan_of()` rejects one — while
-  `setValue` may carry an existing reference, because that is runtime state the
-  host sets fresh at mount.
+- A file **composes like any other node**, at any depth: inside a list, a
+  dataclass, an optional or a union branch, and inside combinations of those.
+  A bare `list[File]` is the one shape with a dedicated representation — a single
+  `multiple` widget rather than a list of single-file widgets — and that is a
+  shortcut, not a restriction on the others.
+  The only file combinations still refused are the ones listed here as genuinely
+  unrepresentable: the `Str` atoms beside `IsPathFile`, the byte-size bounds, and
+  a union whose branches share a transport (see below).
+- `File | str` — and so `list[File | str]` — is **inconstructible**, and the core
+  says so: a file *is* a `Str`, so both branches carry the option id `"str"` and
+  the schema fails to compile with `duplicate option types in shape`. Nothing can
+  tell the two apart on the wire, so this is a real ambiguity rather than a
+  missing feature. It does not extend to `File | None` or `File | int`, whose
+  branches are distinguishable and both work.
+- A file **default is an existing reference**, the same thing `setValue()` takes.
+  The browser never checks that bytes stand behind it; where the guarantee comes
+  from depends on which road the reference took. A default written into a
+  **Python schema** — a prefill included, since a prefill is a temporary default
+  — is certified by `IsPathFile` before a plan can exist, so it has to be a real
+  local file and a missing one fails with `file does not exist` instead of
+  rendering. A reference applied at runtime with **`setValue()`** is frontend
+  state only; it is certified later, when the host resolves it with
+  `decode(..., file_resolver=...)` and the core checks the resulting path. A
+  reference that expires in between shows fine and fails at `build()`.
+- `IsPathFile(min_size=...)` / `max_size=...` are still **not representable in
+  the plan**. The core validates them and the adapter refuses the plan rather
+  than dropping the bound (see below); a schema using them cannot produce a form
+  yet, defaults or not.
 
-**The reference/bytes coherence has no net from the library.** The only thing
-ever checked, in the widget and in the core, is the extension — a lenient
-`endswith` filter, never a check that bytes exist behind the string. If the host
-never uploads the bytes behind a reference, `build()` accepts a string that points
-at nothing; a wrapper such as FuncToWeb that builds the upload cycle must
-guarantee that coherence itself. The full cycle is in
+**A reference is not a path, and the browser cannot close that gap.** All the
+widget ever checks is the extension — a lenient `endswith` filter — and it has no
+way to know whether bytes were stored. The core does check, since
+`pytypehint 0.0.7`: `IsPathFile` certifies extension, existence, regular file and
+byte size, so an unstored reference fails at `build()`. Mapping the reference to
+where the bytes actually live is the host's, through
+`decode(..., file_resolver=...)`; a wrapper such as FuncToWeb that builds the
+upload cycle owns it. The full cycle is in
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
+
+`IsPathFile(min_size=...)` and `max_size=...` are **not emitted into the plan**.
+The widget cannot show a bound it never receives, and a form that accepted a file
+the core then refused after the upload would be worse than a refusal, so
+`plan_of()` raises `TypeError` ("not supported yet") instead of dropping them.
 
 ## Static data only
 
@@ -234,12 +261,29 @@ The **JavaScript runtime** uses standard ES modules, classes, nullish
 coalescing, `WeakMap`, `BigInt` and the `u` regular expression flag. It targets
 current versions of the major browsers.
 
-The optional **`widgets.css` stylesheet** additionally uses the CSS `:has()`
-selector, so it requires a current browser with `:has()` support. This is a
-stylesheet requirement only: the widgets remain semantically correct and
-keyboard-operable without the stylesheet, so a browser lacking `:has()` still
-runs the library — it only loses some of the polished styling. There are no CSS
-fallbacks or polyfills.
+The optional **`widgets.css` stylesheet** additionally uses custom properties,
+the CSS `:has()` selector, `:not()` with a complex argument and `mask-image`
+(with the `-webkit-` fallback), so it requires a
+current browser. This is a stylesheet requirement only: the widgets remain
+semantically correct and keyboard-operable without the stylesheet, so a browser
+lacking them still runs the library — it only loses some of the polished
+styling. There are no CSS fallbacks or polyfills, and no `light-dark()`: the
+themes are explicit blocks, so a subtree can be themed without depending on a
+global `color-scheme`.
+
+The stylesheet also expects the widgets to be mounted inside a `.pth-root`
+container; outside one they are unstyled rather than half-styled. Its theme
+contract is exactly `.pth-root`, `.pth-root[data-pth-theme="light"]` and
+`.pth-root[data-pth-theme="dark"]` — the pre-1.0 `[data-theme]` attribute and
+the `.light-mode` / `.dark-mode` classes were removed, not aliased.
+
+**The stylesheet needs its `icons/` subdirectory.** Its icons are `.svg` files
+addressed relative to the sheet, so they follow it under any static prefix, but
+a host that serves only the flat files leaves the selects without a chevron and
+the remove buttons without a glyph. Nothing is embedded as a data URI, so the
+page needs no `img-src data:` — a plain `img-src 'self'` is enough — and the
+library sets no CSP headers of its own. An icon that fails to load costs the
+glyph and nothing else: size, accessible name and behaviour are unaffected.
 
 The automated tests run on Node with a lightweight fake DOM, so they cover
 widget logic, state and transport, not layout or real browser event

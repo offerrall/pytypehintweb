@@ -22,6 +22,7 @@ static/form.js      orchestration: widgets, initial values, transport
 static/inputs.js    scalar widgets
 static/fields.js    the widget contract and the containers
 static/widgets.css  optional presentation
+static/icons/*.svg  the icons that stylesheet references
 ```
 
 Each layer depends only on the ones above it: the core knows nothing about the
@@ -86,6 +87,26 @@ and **constraint-valid**. A default that breaks a constraint fails `checkPlan()`
 and never mounts; a value the user later types may stay representable while
 invalid, and the widget reports that through `hasError()` / `isReady()`.
 
+A **file** node is a node like any other, and the compiler treats it that way.
+There is no list of allowed file positions and no predicate asking whether a
+shape "contains a file": a shape is representable when each of its nodes is, and
+`_options_node` / `compileNode()` recurse over lists, optionals, choices and
+structs without knowing what is at the bottom. The single file-specific decision
+is a shortcut — a *bare* `list[File]` becomes one `multiple` file node instead of
+a list of single-file widgets — and it is chosen by an exact shape match, so it
+cannot capture anything wider.
+
+A **file** default is the one case where the check is split across layers, and
+deliberately. `checkPlan()` owns the shape a browser can see — a `str` for a
+single node, a `list[str]` for a `multiple` one, non-empty, extension-filtered,
+within the file-count bounds — and stops there, because existence, regular-file
+and byte size are not observable from a page. Those belong to `IsPathFile` in the
+core, which certifies a Python schema default *before* `plan_of()` runs, and
+certifies an opaque runtime reference *after* the host resolves it with
+`decode(..., file_resolver=...)`. The compiler then applies the default by
+calling the widget's public `setValue()`, so a default and a runtime assignment
+are one implementation rather than two.
+
 `checkPlan()` validates everything a hand-written expanded plan needs to be
 buildable — structure, the network boundary, and the semantics of the normalized
 document including its defaults — but it does not restate schema-compiler
@@ -134,6 +155,21 @@ class. The full public API is in the [JavaScript API](javascript.md).
 
 `widgets.css` gives a polished appearance and is not part of the contract. Its
 `pth-*` classes are a technical namespace with no global selectors, driven by
-`--pth-*` design tokens with light and dark themes; semantic behaviour and
-keyboard accessibility do not depend on it. See the
-[JavaScript API](javascript.md#styling) for the tokens and theme switches.
+`--pth-*` design tokens; semantic behaviour and keyboard accessibility do not
+depend on it.
+
+Presentation stops at the stylesheet — including its icons, which are `.svg`
+files under `static/icons/` that the sheet addresses relative to itself. Nothing
+is embedded as a data URI, so a host needs no `img-src data:`, and the runtime
+builds no SVG of its own; it only has to serve the whole static directory.
+
+Every rule starts at the `.pth-root`
+container the host mounts the widgets in, colours resolve through
+`--pth-<name>-light` / `--pth-<name>-dark` palette pairs into the active
+`--pth-<name>` tokens the widgets read, and the theme is chosen by
+`prefers-color-scheme` or by a `data-pth-theme="light|dark"` override on the
+root or any ancestor. That is the whole theme API: it is not in the plan, not
+in `compileForm()`, not in the transport and not in validation, and the runtime
+carries no theme JavaScript at all — which is also why the automatic mode
+cannot flash. See the [JavaScript API](javascript.md#styling) for the tokens
+and the theme contract.

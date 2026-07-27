@@ -168,6 +168,12 @@ _FLOAT_UNSUPPORTED = ("slider",)
 _FILE_UNSUPPORTED = ("min", "max", "pattern", "choices", "is_password", "rows",
                      "placeholder")
 
+# IsPathFile's own byte-size bounds. The core enforces them on the way in, but
+# the plan has no way to say them and the widget has no way to show them, so a
+# form carrying one would accept a file the core then refuses after the upload.
+# Refusing the plan is the honest answer until the widget can check File.size.
+_FILE_SIZE_UNSUPPORTED = ("min_size", "max_size")
+
 # On the wire 3 and 3.0 are the same token, so grouping union branches by these
 # sentinels rather than by Python type makes int and float collide — and str,
 # date, time and enum names collide the same way as JSON strings. A collision
@@ -556,26 +562,14 @@ def _is_multiple_file_shape(shape) -> bool:
             and _is_file_shape(shape.item[0]))
 
 
-def _contains_file(shapes) -> bool:
-    # A file below a list item that is not a bare list[File] — an optional item,
-    # a union, a nested list, a struct field. Those combinations are deferred.
-    for shape in shapes:
-        if _is_file_shape(shape):
-            return True
-        if type(shape) is List and _contains_file(shape.item):
-            return True
-        if type(shape) is Struct and any(
-                _contains_file(f.shape) for f in shape.fields):
-            return True
-    return False
-
-
 def _file_node(shape, config, path: str) -> dict:
-    # IsPathFile turns a Str into a file field, still a str on the wire. The
-    # value is a reference the browser widget mints locally from the chosen file;
-    # the core certifies it by extension alone, never that bytes exist. Empty
-    # extensions means any file. A reference comes from the user's choice, so a
-    # default on a file is rejected (see _field_node / _plain_value).
+    # IsPathFile turns a Str into a file field, still a str on the wire. The value
+    # is a reference the browser widget mints locally from the chosen file, and
+    # the widget filters it by extension. What the reference points at is the
+    # host's: the core certifies a real file, so the host maps the reference to
+    # its storage through decode()'s file_resolver. Empty extensions means any
+    # file. A reference comes from the user's choice, so a default on a file is
+    # rejected (see _field_node / _plain_value).
     #
     # minFiles / maxFiles stay null here and carry the list's Min / Max on a
     # multiple one. The current* labels drive the "current file" display
@@ -584,6 +578,11 @@ def _file_node(shape, config, path: str) -> dict:
         if getattr(shape, name) is not None:
             raise _error(
                 path, f"Str.{name} with IsPathFile is not supported yet")
+
+    for name in _FILE_SIZE_UNSUPPORTED:
+        if getattr(shape.is_path_file, name) is not None:
+            raise _error(
+                path, f"IsPathFile.{name} is not supported yet")
 
     return {
         "kind": "file",
@@ -886,16 +885,14 @@ def _shape_node(shape, config, path: str) -> dict:
         return {"kind": "bool", "options": {}}
 
     if type(shape) is List:
-        # list[File] is one `multiple` file node, not a generic list of file
-        # widgets. A file anywhere else inside a list is deferred.
+        # A bare list[File] gets its own representation: one `multiple` file
+        # node, a single input taking several files at once. That is a shortcut
+        # for the one shape a user expects to behave that way, not a rule about
+        # files in lists — every other list compiles its item recursively like
+        # any other, so a file reached through an optional, a union, a nested
+        # list or a struct needs nothing special here.
         if _is_multiple_file_shape(shape):
             return _multiple_file_node(shape, config, path)
-
-        if _contains_file(shape.item):
-            raise _error(
-                path,
-                "a file inside a list is only supported as a plain list[File]; "
-                "this combination is not supported yet")
 
         min_items = _inclusive_length(shape.min, path, "List.min")
         max_items = _inclusive_length(shape.max, path, "List.max")
@@ -1021,13 +1018,13 @@ def _branch_index(shapes, value, path: str) -> int:
 
 
 def _plain_value(shape, value, path: str):
-    # A file mints its reference from the user's choice, so a default reaching
-    # one — directly or nested in a list, struct or branch — is rejected.
+    # A file default is an existing reference the host declares, exactly what
+    # FileWidget.setValue() takes: a string the browser shows as the current
+    # file and transports back untouched. It carries no bytes and starts no
+    # upload. The core already certified this one through IsPathFile, so it
+    # travels as the plain str it is.
     if _is_file_shape(shape):
-        raise _error(
-            path,
-            "a file field cannot carry a default; its reference is generated "
-            "locally")
+        return value
 
     if type(shape) is Struct:
         return {f.name: _initial_value(f.shape, getattr(value, f.name),
@@ -1103,18 +1100,6 @@ def _field_node(field, config, path: str) -> dict:
     optional = any(type(s) is NoneShape for s in field.shape)
     has_default = field.default is not MISSING
     where = f"{path}.{field.name}"
-
-    # A lone file field takes no default at all, not even the None of a
-    # switched-off optional or an empty list. Caught here because _plain_value
-    # returns early on None and never descends into an empty list. A file as one
-    # branch of a wider union is left to _plain_value.
-    real = [s for s in field.shape if type(s) is not NoneShape]
-    if (has_default and len(real) == 1
-            and (_is_file_shape(real[0]) or _is_multiple_file_shape(real[0]))):
-        raise _error(
-            where,
-            "a file field cannot carry a default; its reference is generated "
-            "locally")
 
     label = field.label.value if field.label else field.name
     description = field.description.value if field.description else None

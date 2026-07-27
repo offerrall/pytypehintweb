@@ -109,19 +109,103 @@ test("file count bounds are validated and belong to multiple only", () => {
 });
 
 
-// --- a file carries no default ----------------------------------------------
+// --- a file default is an existing reference --------------------------------
+//
+// It is the same thing FileWidget.setValue() takes: a string the host declares,
+// shown as the current file. The plan checks its shape; the widget applies it.
 
-test("a file field with a default is rejected, with the default's path", () => {
-    rejects(plan([{ name: "a", hasDefault: true, default: "report.pdf",
-                    node: { kind: "file", options: { extensions: [".pdf"] } } }]),
-            "plan.fields[0].default: a file field cannot carry a default");
+test("a single file field accepts a reference as its default", () => {
+    const accepted = plan([{
+        name: "a", hasDefault: true, default: "stored/report.pdf",
+        node: { kind: "file", options: { extensions: [".pdf"] } },
+    }]);
+
+    assert.equal(checkPlan(accepted).fields[0].default, "stored/report.pdf");
 });
 
 
-test("an optional file with a null default is still rejected", () => {
-    rejects(plan([{ name: "a", optional: true, enabled: false, hasDefault: true,
-                    default: null, node: { kind: "file" } }]),
-            "plan.fields[0].default: a file field cannot carry a default");
+test("a multiple file field accepts an array of references", () => {
+    const accepted = plan([{
+        name: "a", hasDefault: true,
+        default: ["stored/one.pdf", "stored/two.pdf"],
+        node: { kind: "file", options: { multiple: true, extensions: [".pdf"] } },
+    }]);
+
+    assert.deepEqual(checkPlan(accepted).fields[0].default,
+                     ["stored/one.pdf", "stored/two.pdf"]);
+});
+
+
+test("an optional file accepts a null default", () => {
+    const accepted = plan([{
+        name: "a", optional: true, enabled: false, hasDefault: true,
+        default: null, node: { kind: "file" },
+    }]);
+
+    assert.equal(checkPlan(accepted).fields[0].default, null);
+});
+
+
+test("a file default must match the arity of its node", () => {
+    rejects(plan([{ name: "a", hasDefault: true, default: ["a.pdf"],
+                    node: { kind: "file", options: { extensions: [".pdf"] } } }]),
+            "plan.fields[0].default: expected a string file reference");
+
+    rejects(plan([{ name: "b", hasDefault: true, default: "a.pdf",
+                    node: { kind: "file",
+                            options: { multiple: true, extensions: [".pdf"] } } }]),
+            "plan.fields[0].default: expected an array of file references");
+});
+
+
+test("a file default must be a non-empty string", () => {
+    rejects(plan([{ name: "a", hasDefault: true, default: 7,
+                    node: { kind: "file" } }]),
+            "plan.fields[0].default: expected a string file reference");
+
+    rejects(plan([{ name: "b", hasDefault: true, default: "",
+                    node: { kind: "file" } }]),
+            "plan.fields[0].default: expected a non-empty file reference");
+
+    rejects(plan([{ name: "c", hasDefault: true, default: ["a.pdf", ""],
+                    node: { kind: "file",
+                            options: { multiple: true, extensions: [".pdf"] } } }]),
+            "plan.fields[0].default[1]: expected a non-empty file reference");
+});
+
+
+test("a file default is filtered by the declared extensions", () => {
+    rejects(plan([{ name: "a", hasDefault: true, default: "note.txt",
+                    node: { kind: "file", options: { extensions: [".pdf"] } } }]),
+            "plan.fields[0].default: is not an accepted file type");
+
+    rejects(plan([{ name: "b", hasDefault: true, default: ["a.pdf", "b.txt"],
+                    node: { kind: "file",
+                            options: { multiple: true, extensions: [".pdf"] } } }]),
+            "plan.fields[0].default[1]: is not an accepted file type");
+});
+
+
+test("a node with no extensions accepts any reference as a default", () => {
+    const accepted = plan([{ name: "a", hasDefault: true, default: "anything",
+                             node: { kind: "file" } }]);
+
+    assert.equal(checkPlan(accepted).fields[0].default, "anything");
+});
+
+
+test("a multiple file default obeys the file count bounds", () => {
+    const bounded = { multiple: true, minFiles: 2, maxFiles: 3 };
+
+    rejects(plan([{ name: "a", hasDefault: true, default: ["one.pdf"],
+                    node: { kind: "file", options: bounded } }]),
+            "plan.fields[0].default: expected at least 2 file references");
+
+    rejects(plan([{
+        name: "b", hasDefault: true,
+        default: ["1.pdf", "2.pdf", "3.pdf", "4.pdf"],
+        node: { kind: "file", options: bounded },
+    }]), "plan.fields[0].default: expected at most 3 file references");
 });
 
 

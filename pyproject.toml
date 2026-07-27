@@ -53,7 +53,12 @@ version = {attr = "pytypehintweb.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-pytypehintweb = ["static/*.js", "static/*.css", "py.typed"]
+pytypehintweb = [
+    "static/*.js",
+    "static/*.css",
+    "static/icons/*.svg",
+    "py.typed",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

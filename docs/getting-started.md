@@ -138,7 +138,10 @@ absence. See the [plan contract](plan.md) for every property and its meaning.
 ## Serve the browser files
 
 The browser modules ship inside the Python package. `pytypehintweb.STATIC` is
-the directory holding `form.js`, its sibling modules and `widgets.css`. The
+the directory holding `form.js`, its sibling modules, `widgets.css` and the
+`icons/` subdirectory the stylesheet references. Serve the directory whole —
+`StaticFiles` does, and so does copying it — because `widgets.css` addresses its
+icons relative to itself, so they work under any prefix but must be there. The
 library exposes the path; serving it is up to the application:
 
 ```python
@@ -175,7 +178,7 @@ ES modules with no build step.
 ```html
 <link rel="stylesheet" href="/static/widgets.css">
 
-<div id="form"></div>
+<div id="form" class="pth-root"></div>
 <button id="submit" type="button">Create</button>
 <pre id="answer"></pre>
 
@@ -203,6 +206,12 @@ parses JSON: obtaining the plan belongs to the application.
 ```
 
 Mounting is explicit. The library builds the elements and hands them over.
+
+The container carries `class="pth-root"` because the stylesheet themes from it:
+inside a root the widgets follow the system's light or dark preference, and
+`data-pth-theme="light"` or `"dark"` on the root — or on any ancestor — forces
+one. The theme is presentation only; it never reaches the plan or the values.
+See [Styling](javascript.md#styling).
 
 ## Read and submit values
 

@@ -38,9 +38,41 @@ chrome --headless=new --disable-gpu --allow-file-access-from-files \
 ```
 
 where `$SMOKE_URL` is an absolute `file://` URL to `tests/browser/smoke.html`.
-Expect `SMOKE: PASS (N checks)`. It is a manual pre-release check, not part of the
-Node suite; drag-and-drop and byte uploads are out of its scope (they need a live
-host channel and are exercised by the bundled demo).
+Expect `SMOKE: PASS (N checks)`. It runs in CI alongside the Node suite;
+drag-and-drop and byte uploads are out of its scope (they need a live host
+channel and are exercised by the bundled demo).
+
+**Read the verdict from `#result`, never from a bare text match.** Both browser
+pages spell their own PASS string in a comment, so `grep 'SMOKE: PASS'` matches
+whatever the page did — including not running at all. Anchor on
+`id="result">SMOKE: PASS`, which is what CI does.
+
+Both pages import their modules **statically**. A top-level `await import(...)`
+settles after the load event, so `--dump-dom` raced it and captured `PENDING`
+about half the time; the fix is the import form, not a larger time budget, which
+does not help because the race is not about how much time is granted.
+
+### Theme cascade
+
+`tests/browser/theme.html` covers the other thing only a browser has: the CSS
+cascade. The Python suite reads `widgets.css` as text and can prove the theme
+blocks exist, agree on their tokens and clear their contrast thresholds, but not
+that specificity, inheritance and proximity land where the contract says. The
+page is static — no modules, no library JavaScript — and reads computed styles:
+automatic mode, an override applied on the root and on an ancestor, the nearest
+override winning, two roots disagreeing on one page, and the host document left
+untouched. Run it once per system preference, since automatic mode has two
+answers:
+
+```bash
+chrome --headless=new --disable-gpu --allow-file-access-from-files \
+  --virtual-time-budget=8000 --blink-settings=preferredColorScheme=0 \
+  --dump-dom "$THEME_URL" | grep 'id="result"'
+```
+
+`preferredColorScheme=0` is dark and `=1` is light. Expect
+`THEME: PASS (N checks)` from both. CI runs it after the smoke page, failing the
+job and dumping the page when either preference does not reach PASS.
 
 ## Guarantees
 
@@ -98,9 +130,31 @@ The suites are written around the failures that would otherwise be silent:
 - `setValue(string)` plants an existing reference, shown on screen declared as the
   current file (not editable) and transported verbatim, so a `Struct` with an
   internal path round-trips through an edit form byte-identical when its file is
-  untouched; a file node carries no plan default (`plan_of`/`checkPlan` reject one,
-  path included), and a `str | file` union is inconstructible because both branches
+  untouched; and a `str | file` union is inconstructible because both branches
   carry the option id `"str"`;
+- a file **default** is that same reference declared in the plan, and it reaches
+  the widget *through* `setValue()`, so the two cannot drift: compiling with a
+  default is asserted to produce the same observable state as compiling without
+  one and calling `setValue()` afterwards — at the widget level and again across
+  the real Python → plan → browser boundary. A default is never a local
+  selection: `file()`/`files()` stay empty and `uploads()` reports nothing, while
+  a user's pick does appear in both. `checkPlan()` polices the shape — `str` for
+  a single node, `list[str]` for a multiple one, non-empty, extension-filtered,
+  within `minFiles`/`maxFiles` — and the widget owns the semantics. Existence is
+  neither checked nor claimed in the browser: a Python schema default (a prefill
+  included) is certified by `IsPathFile` before a plan exists, so a missing path,
+  a directory, a wrong extension, a violated byte bound or one bad element of a
+  `list[File]` each fail at the core with no plan produced — every one of those
+  refusals is pinned to the core's own message, so a regression that moved one
+  into the adapter would show;
+- which file compositions compile is a test, not a sentence: `File`,
+  `File | None`, `list[File]`, `list[File | None]`, `list[File | int]`,
+  `list[list[File]]`, a dataclass holding a file, a dataclass holding a
+  `list[File]` and a list of such dataclasses all produce a node, and a guard
+  asserts the blanket "does this contain a file" predicate stays deleted. The
+  browser side drives each nested shape through the public API — rows added and
+  removed, branches switched, a real pick two levels down — and `decode()` is
+  pinned to call the resolver once per reference, in order, at any depth;
 - date and time bounds compare lexicographically over the canonical ISO form,
   and the core's rejection of the string-group wrapper is pinned, so `decode()`
   is proven to be the only thing that can unwrap it;
@@ -117,6 +171,32 @@ The suites are written around the failures that would otherwise be silent:
   the Python constant — while the text field stays the source of truth;
 - every control keeps an accessible name, and generated ids stay unique across
   nested, repeated and separately compiled forms;
+- the stylesheet stays inside its own root and its themes stay complete: every
+  selector starts at `.pth-root` or is one of the two `data-pth-theme` roots,
+  the automatic block skips any overridden root and the manual blocks follow it
+  without `!important`, the four theme blocks assign the same token set, every
+  palette value has a light/dark pair no rule reads directly, and no colour is
+  written outside the palette. The palettes are then measured: both clear 4.5:1
+  for text and 3:1 for interface components across every relation that appears
+  on screen (`tests/python/test_stylesheet_theme.py`, with the parser and the
+  WCAG helper in `tests/python/stylesheet.py`). Thresholds are the contract, not
+  the hex values, so the palette can be retuned without editing a test;
+- every icon is a file, never an embedding: the production sources carry no
+  `data:image/svg`, no inline `<svg>` and no base64 (comments excepted, so the
+  rule can be written down where it applies), every `url()` in the stylesheet is
+  relative and resolves to a shipped file, every shipped icon is referenced, and
+  each one is valid UTF-8 with a single `<svg>` root, a `viewBox`, sane
+  dimensions and no script, no `<foreignObject>`, no remote link and no editor
+  metadata. `static/icons/*.svg` is asserted to be declared as package data,
+  because nothing under `src/` ships just for being there;
+- the documentation's anchors follow GitHub's rule, pinned by a table of cases
+  rather than by the documents that happen to exist
+  (`tests/python/test_markdown_anchors.py`, with the helper in
+  `tests/python/markdown_anchors.py`): punctuation is dropped without leaving a
+  separator, `_` and non-ASCII letters survive, repeats take `-1`/`-2`, and the
+  heading parser skips fenced code blocks so a shell comment never becomes an
+  anchor. Every internal `#fragment` in the documentation is then resolved
+  against those anchors;
 - every browser file the runtime imports ships inside the package.
 
 The bundled demo is a showcase and a debugging tool; it asserts nothing.
@@ -127,7 +207,8 @@ The bundled demo is a showcase and a debugging tool; it asserts nothing.
 three jobs: **Python** (a `3.11`/`3.12`/`3.13` matrix running `mypy` and the
 `pytest` suite, packaging/assets test included), **JavaScript** (the `node --test`
 suite — widgets, size budget and plan-doc examples — plus the headless-Chrome
-browser smoke), and **Packaging** (`uv build` then `uvx twine check`). Installing
+browser smoke and the theme-cascade page, the latter once per system
+preference), and **Packaging** (`uv build` then `uvx twine check`). Installing
 the project resolves its one runtime dependency, `pytypehint >= 0.0.6`, from PyPI.
 
 Releases are published from `.github/workflows/publish.yml`, which triggers only

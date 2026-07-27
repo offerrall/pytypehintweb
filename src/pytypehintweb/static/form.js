@@ -27,6 +27,15 @@ function withValue(options, initial) {
 }
 
 
+function withInitial(widget, initial) {
+    if (initial !== undefined) {
+        widget.setValue(initial);
+    }
+
+    return widget;
+}
+
+
 function compileNode(node, nextId, initial) {
     switch (node.kind) {
         case "str":
@@ -66,7 +75,7 @@ function compileNode(node, nextId, initial) {
             return scalar(new BoolWidget(withValue(node.options, initial)));
 
         case "file":
-            return scalar(new FileWidget(node.options));
+            return scalar(withInitial(new FileWidget(node.options), initial));
 
         case "list":
             return compileList(node, nextId, initial);
