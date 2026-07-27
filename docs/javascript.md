@@ -478,7 +478,12 @@ reference each, and `value()` is the array (`files()` gives the raw `File`s,
 `file()` the first); `minFiles`/`maxFiles` bound the count. A single node makes
 `value()` a lone reference or `null`. A file whose extension the node does not
 accept mints no reference and is *invalid* (`value()` `null`, `invalidMessage`
-shown, `aria-invalid` set) — all-or-nothing on a single pick. A `multiple` field
+shown, `aria-invalid` set) — all-or-nothing on a single pick. `minSize` and
+`maxSize` are weighed the same way, against the picked file's own `.size`, in
+bytes and **per file**: exactly at a bound is inside, one byte past it is not,
+and the message names the bound the way the widget names a size (`File is too
+small; minimum 2 KB`). A batch carrying one file that breaks a bound is refused
+whole, so nothing invalid mints a reference or reaches `uploads()`. A `multiple` field
 builds a list: the native input **resets** it to the pick, while the **+** button
 and a drop **append**; each chosen file is a card with its own **✕** to drop just
 that one, and the earlier references stay stable. A single field replaces on each
@@ -493,7 +498,11 @@ references. An *existing* reference is what the host already holds and plants wi
 …`" with a **Replace** button, not editable and with the choose control hidden —
 and `value()`/`read()` transport it **verbatim**, so a struct with a file path
 survives an edit form untouched. The reference must clear the same extension
-filter a minted one does. `isReady()` is `true` in that mode. **Replace** drops
+filter a minted one does — but **not** the size bounds: a reference names a file
+the browser never received, so there is no `.size` to weigh and none is invented
+or fetched. It is not "certified"; it is simply a value whose size is not
+observable here, and `build()` is where it gets measured. `isReady()` is `true`
+in that mode. **Replace** drops
 the held reference and brings the native choose control back — the same for a
 single file and a `multiple` list, where the input then resets the selection and
 the **+** button grows it; choosing mints a fresh reference, picking nothing

@@ -257,8 +257,12 @@ The runtime defaults live in `static/defaults.js` as frozen objects.
 | `multiple`           | `false`                       |
 | `minFiles`           | `null`                        |
 | `maxFiles`           | `null`                        |
+| `minSize`            | `null`                        |
+| `maxSize`            | `null`                        |
 | `minMessage`         | `"Add at least {value} files"` |
 | `maxMessage`         | `"Keep at most {value} files"` |
+| `minSizeMessage`     | `"File is too small; minimum {value}"` |
+| `maxSizeMessage`     | `"File is too large; maximum {value}"` |
 | `currentLabel`       | `"Current file: {value}"`     |
 | `currentRemoveLabel` | `"Remove current file"`       |
 | `currentReplaceLabel`| `"Replace file"`              |
@@ -785,9 +789,16 @@ value is a reference string the browser widget **generates locally** when the
 user picks a file — the file's name compressed to bare ASCII (15 characters at
 most), a UUID, and the file's lowercased extension. It is a reference, not a
 path: turning it into something the core can certify is the host's, through
-`decode(..., file_resolver=...)`. The plan carries no byte-size bounds —
-`IsPathFile(min_size=...)` / `max_size=...` are refused at compile rather than
-dropped, since the widget could not enforce them.
+`decode(..., file_resolver=...)`. `IsPathFile(min_size=...)` and `max_size=...`
+travel as `minSize` / `maxSize`, in bytes, and they are **per file**, never a
+combined total. They belong to the node, so they arrive wherever a file node
+arrives — inside a list, a union branch or a nested struct alike.
+
+What the browser does with them is a courtesy, not a verdict: a local `File`
+carries a `.size`, so the widget refuses one that already breaks a bound before
+any upload happens. A reference the host plants carries no bytes at all, so
+nothing weighs it there. Either way the core measures the real file when
+`build()` runs, which is the only check a hand-written HTTP call cannot skip.
 
 ```json
 {
@@ -798,8 +809,12 @@ dropped, since the widget could not enforce them.
     "multiple": false,
     "minFiles": null,
     "maxFiles": null,
+    "minSize": null,
+    "maxSize": null,
     "minMessage": "Add at least {value} files",
     "maxMessage": "Keep at most {value} files",
+    "minSizeMessage": "File is too small; minimum {value}",
+    "maxSizeMessage": "File is too large; maximum {value}",
     "currentLabel": "Current file: {value}",
     "currentRemoveLabel": "Remove current file",
     "currentReplaceLabel": "Replace file",
@@ -864,8 +879,12 @@ A field declaring an existing file, single and multiple:
       "multiple": false,
       "minFiles": null,
       "maxFiles": null,
+      "minSize": null,
+      "maxSize": null,
       "minMessage": "Add at least {value} files",
       "maxMessage": "Keep at most {value} files",
+      "minSizeMessage": "File is too small; minimum {value}",
+      "maxSizeMessage": "File is too large; maximum {value}",
       "currentLabel": "Current file: {value}",
       "currentRemoveLabel": "Remove current file",
       "currentReplaceLabel": "Replace file",
@@ -892,8 +911,12 @@ A field declaring an existing file, single and multiple:
       "multiple": true,
       "minFiles": null,
       "maxFiles": null,
+      "minSize": null,
+      "maxSize": null,
       "minMessage": "Add at least {value} files",
       "maxMessage": "Keep at most {value} files",
+      "minSizeMessage": "File is too small; minimum {value}",
+      "maxSizeMessage": "File is too large; maximum {value}",
       "currentLabel": "Current file: {value}",
       "currentRemoveLabel": "Remove current file",
       "currentReplaceLabel": "Replace file",

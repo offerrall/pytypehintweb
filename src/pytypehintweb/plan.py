@@ -32,6 +32,8 @@ _WITH_VALUE = (
     "list_max_message",
     "file_min_message",
     "file_max_message",
+    "file_min_size_message",
+    "file_max_size_message",
 )
 
 _NO_PLACEHOLDER = (
@@ -128,6 +130,10 @@ class WebConfig:
     file_invalid_message: str = "Not an accepted file type"
     file_min_message: str = "Add at least {value} files"
     file_max_message: str = "Keep at most {value} files"
+    # Byte-size bounds, one per file. The widget formats the {value} the way it
+    # formats the size it shows beside a chosen file, so the two read alike.
+    file_min_size_message: str = "File is too small; minimum {value}"
+    file_max_size_message: str = "File is too large; maximum {value}"
     file_current_label: str = "Current file: {value}"
     file_current_remove_label: str = "Remove current file"
     file_current_replace_label: str = "Replace file"
@@ -168,11 +174,6 @@ _FLOAT_UNSUPPORTED = ("slider",)
 _FILE_UNSUPPORTED = ("min", "max", "pattern", "choices", "is_password", "rows",
                      "placeholder")
 
-# IsPathFile's own byte-size bounds. The core enforces them on the way in, but
-# the plan has no way to say them and the widget has no way to show them, so a
-# form carrying one would accept a file the core then refuses after the upload.
-# Refusing the plan is the honest answer until the widget can check File.size.
-_FILE_SIZE_UNSUPPORTED = ("min_size", "max_size")
 
 # On the wire 3 and 3.0 are the same token, so grouping union branches by these
 # sentinels rather than by Python type makes int and float collide — and str,
@@ -479,6 +480,16 @@ def _bound(bound, delta, path: str, what: str):
     return inclusive
 
 
+def _file_size(bound, path: str, what: str):
+    # A plain int on IsPathFile, already checked there for being a non-negative
+    # int and for min <= max. All that is left is the one thing the core has no
+    # reason to care about: JSON carries it to a JavaScript number.
+    if bound is None:
+        return None
+
+    return _safe_int(bound, path, what)
+
+
 def _inclusive_length(bound, path: str, what: str):
     # Length bounds are inclusive in the browser contract. The core rejects an
     # exclusive one, so a compiled schema never carries it; refusing it here too
@@ -568,8 +579,13 @@ def _file_node(shape, config, path: str) -> dict:
     # the widget filters it by extension. What the reference points at is the
     # host's: the core certifies a real file, so the host maps the reference to
     # its storage through decode()'s file_resolver. Empty extensions means any
-    # file. A reference comes from the user's choice, so a default on a file is
-    # rejected (see _field_node / _plain_value).
+    # file.
+    #
+    # minSize / maxSize are IsPathFile's byte bounds, one per file. They travel
+    # so the widget can refuse a local File whose .size already breaks them,
+    # before any upload; that is a courtesy, not the verdict. A reference the
+    # host plants carries no bytes, so the browser cannot weigh it and does not
+    # try — and the core re-measures the real file either way.
     #
     # minFiles / maxFiles stay null here and carry the list's Min / Max on a
     # multiple one. The current* labels drive the "current file" display
@@ -579,11 +595,6 @@ def _file_node(shape, config, path: str) -> dict:
             raise _error(
                 path, f"Str.{name} with IsPathFile is not supported yet")
 
-    for name in _FILE_SIZE_UNSUPPORTED:
-        if getattr(shape.is_path_file, name) is not None:
-            raise _error(
-                path, f"IsPathFile.{name} is not supported yet")
-
     return {
         "kind": "file",
         "options": {
@@ -592,8 +603,14 @@ def _file_node(shape, config, path: str) -> dict:
             "multiple": False,
             "minFiles": None,
             "maxFiles": None,
+            "minSize": _file_size(shape.is_path_file.min_size, path,
+                                  "IsPathFile.min_size"),
+            "maxSize": _file_size(shape.is_path_file.max_size, path,
+                                  "IsPathFile.max_size"),
             "minMessage": config.file_min_message,
             "maxMessage": config.file_max_message,
+            "minSizeMessage": config.file_min_size_message,
+            "maxSizeMessage": config.file_max_size_message,
             "currentLabel": config.file_current_label,
             "currentRemoveLabel": config.file_current_remove_label,
             "currentReplaceLabel": config.file_current_replace_label,

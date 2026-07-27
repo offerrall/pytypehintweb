@@ -241,8 +241,12 @@ export class FileWidget extends Widget {
         multiple = FILE_DEFAULTS.multiple,
         minFiles = FILE_DEFAULTS.minFiles,
         maxFiles = FILE_DEFAULTS.maxFiles,
+        minSize = FILE_DEFAULTS.minSize,
+        maxSize = FILE_DEFAULTS.maxSize,
         minMessage = FILE_DEFAULTS.minMessage,
         maxMessage = FILE_DEFAULTS.maxMessage,
+        minSizeMessage = FILE_DEFAULTS.minSizeMessage,
+        maxSizeMessage = FILE_DEFAULTS.maxSizeMessage,
         currentLabel = FILE_DEFAULTS.currentLabel,
         currentRemoveLabel = FILE_DEFAULTS.currentRemoveLabel,
         currentReplaceLabel = FILE_DEFAULTS.currentReplaceLabel,
@@ -259,8 +263,12 @@ export class FileWidget extends Widget {
         this.multiple = multiple === true;
         this.minFiles = minFiles;
         this.maxFiles = maxFiles;
+        this.minSize = minSize;
+        this.maxSize = maxSize;
         this.minMessage = minMessage;
         this.maxMessage = maxMessage;
+        this.minSizeMessage = minSizeMessage;
+        this.maxSizeMessage = maxSizeMessage;
         this.currentLabel = currentLabel;
         this.currentRemoveLabel = currentRemoveLabel;
         this.currentReplaceLabel = currentReplaceLabel;
@@ -269,6 +277,7 @@ export class FileWidget extends Widget {
         this._files = [];
         this._refs = [];
         this._invalid = false;
+        this._oversized = null;
         this._current = null;
         this._stashedCurrent = null;
         this._uploaded = new Set();
@@ -419,6 +428,10 @@ export class FileWidget extends Widget {
             return this.invalidMessage;
         }
 
+        if (this._oversized !== null) {
+            return this._oversized;
+        }
+
         if (this.multiple) {
             const count = this._refs.length;
 
@@ -481,6 +494,7 @@ export class FileWidget extends Widget {
         this._files = [];
         this._refs = [];
         this._invalid = false;
+        this._oversized = null;
         this._current = null;
         this._stashedCurrent = null;
         this.input.value = "";
@@ -497,6 +511,7 @@ export class FileWidget extends Widget {
         this._files = [];
         this._refs = [];
         this._invalid = false;
+        this._oversized = null;
         this.input.value = "";
 
         this._renderCurrent();
@@ -515,12 +530,37 @@ export class FileWidget extends Widget {
         this._files = [];
         this._refs = [];
         this._invalid = false;
+        this._oversized = null;
         this.input.value = "";
 
         this._renderCurrent();
         this._renderList();
         this._showMessage();
         this._emitChange();
+    }
+
+    _sizeError(file) {
+        const size = file ? file.size : null;
+
+        if (typeof size !== "number" || !Number.isFinite(size)) {
+            return null;
+        }
+
+        if (this.minSize !== null && size < this.minSize) {
+            return this.minSizeMessage.replace(
+                "{value}", this._sizeLabel(this.minSize));
+        }
+
+        if (this.maxSize !== null && size > this.maxSize) {
+            return this.maxSizeMessage.replace(
+                "{value}", this._sizeLabel(this.maxSize));
+        }
+
+        return null;
+    }
+
+    _sizeLabel(bytes) {
+        return this._formatSize(bytes) ?? `${bytes} B`;
     }
 
     _matchedExtension(name) {
@@ -567,8 +607,20 @@ export class FileWidget extends Widget {
         const chosen = this.multiple ? incoming : incoming.slice(0, 1);
         const matched = chosen.map((file) => this._matchedExtension(file.name));
 
+        const oversized = chosen.reduce(
+            (found, file) => found ?? this._sizeError(file), null);
+
         if (chosen.length > 0 && matched.some((extension) => extension === null)) {
             this._invalid = true;
+            this._oversized = null;
+
+            if (!this.multiple) {
+                this._files = chosen;
+                this._refs = [];
+            }
+        } else if (oversized !== null) {
+            this._invalid = false;
+            this._oversized = oversized;
 
             if (!this.multiple) {
                 this._files = chosen;
@@ -576,6 +628,7 @@ export class FileWidget extends Widget {
             }
         } else {
             this._invalid = false;
+            this._oversized = null;
 
             const refs = matched.map(
                 (extension, i) => mintFileReference(chosen[i].name, extension));
@@ -603,6 +656,7 @@ export class FileWidget extends Widget {
 
         if (this._files.length === 0) {
             this._invalid = false;
+            this._oversized = null;
         }
 
         this._syncNativeInput();

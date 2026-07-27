@@ -27,8 +27,11 @@ invariant — skip themselves when `node` is not on the path.
 
 The two suites above run against a lightweight fake DOM, which cannot reproduce a
 few behaviours only a real browser has — most importantly that a native control
-loses focus when it is disabled, and that a range input whose stride misses the
-maximum really does reach it. `tests/browser/smoke.html` covers those against
+loses focus when it is disabled, that a range input whose stride misses the
+maximum really does reach it, and that a `File` has a real `.size` a size bound
+can be weighed against (a `DataTransfer` is the only way to build one, and the
+only way to hand it to a read-only `FileList`).
+`tests/browser/smoke.html` covers those against
 the actual shipped modules, with no dependency and no build step. Run it headless
 and read the verdict from the DOM:
 

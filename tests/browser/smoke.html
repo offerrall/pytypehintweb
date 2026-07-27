@@ -91,6 +91,15 @@ try {
               node: { kind: "list",
                       item: { kind: "list",
                               item: { kind: "file", options: {} } } } },
+            // Byte bounds: a real File carries a real .size, which is the one
+            // thing about it this layer can weigh.
+            { name: "weighed", label: "Weighed", node: {
+                kind: "file", options: {
+                    extensions: [".pdf"], minSize: 10, maxSize: 100 } } },
+            { name: "weighedKept", label: "Weighed kept", hasDefault: true,
+              default: "stored/opaque.pdf",
+              node: { kind: "file", options: {
+                  extensions: [".pdf"], minSize: 10, maxSize: 100 } } },
             { name: "rows", label: "Rows", hasDefault: true,
               default: [{ title: "one", document: "stored/f.pdf" }],
               node: { kind: "list", item: { kind: "object", fields: [
@@ -227,6 +236,42 @@ try {
           && form.uploads()[0].file.name === "deep.pdf");
     check("the untouched rows keep their references",
           same(form.read().rows, [{ title: "one", document: "stored/f.pdf" }]));
+
+    // Byte bounds, weighed against genuine File objects. A DataTransfer is the
+    // only way to build one here, and the only way to hand it to a read-only
+    // FileList.
+    const weighed = by("weighed").widget;
+
+    function pick(widget, name, bytes) {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["x".repeat(bytes)], name,
+                                    { type: "application/pdf" }));
+        widget.control().files = transfer.files;
+        widget.control().dispatchEvent(new Event("change"));
+    }
+
+    pick(weighed, "small.pdf", 9);
+    check("a file below minSize is refused", weighed.hasError()
+          && !weighed.isReady() && weighed.uploads().length === 0);
+
+    pick(weighed, "big.pdf", 101);
+    check("a file above maxSize is refused", weighed.hasError()
+          && !weighed.isReady() && weighed.uploads().length === 0);
+
+    pick(weighed, "edge-min.pdf", 10);
+    check("exactly minSize is accepted",
+          !weighed.hasError() && weighed.isReady());
+
+    pick(weighed, "edge-max.pdf", 100);
+    check("exactly maxSize is accepted",
+          !weighed.hasError() && weighed.isReady());
+    check("an accepted file becomes the one pending upload",
+          weighed.uploads().length === 1
+          && weighed.uploads()[0].file.name === "edge-max.pdf");
+
+    check("a bounded reference is never weighed",
+          !by("weighedKept").hasError() && by("weighedKept").isReady()
+          && by("weighedKept").widget.uploads().length === 0);
 
     // Replacing it with a real local pick swaps both the value and the state.
     // `input.files` is a read-only FileList in a real browser, so the pick is

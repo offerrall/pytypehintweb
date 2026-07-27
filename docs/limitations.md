@@ -173,10 +173,10 @@ describe. What is *limited* here:
   state only; it is certified later, when the host resolves it with
   `decode(..., file_resolver=...)` and the core checks the resulting path. A
   reference that expires in between shows fine and fails at `build()`.
-- `IsPathFile(min_size=...)` / `max_size=...` are still **not representable in
-  the plan**. The core validates them and the adapter refuses the plan rather
-  than dropping the bound (see below); a schema using them cannot produce a form
-  yet, defaults or not.
+- `IsPathFile(min_size=...)` / `max_size=...` travel now, but only a **local
+  pick** can be weighed against them. A reference carries no bytes, so a form
+  can show one that breaks a bound and only fail at `build()`. A bound larger
+  than a safe JavaScript integer is refused rather than rounded.
 
 **A reference is not a path, and the browser cannot close that gap.** All the
 widget ever checks is the extension — a lenient `endswith` filter — and it has no
@@ -188,10 +188,11 @@ where the bytes actually live is the host's, through
 upload cycle owns it. The full cycle is in
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
-`IsPathFile(min_size=...)` and `max_size=...` are **not emitted into the plan**.
-The widget cannot show a bound it never receives, and a form that accepted a file
-the core then refused after the upload would be worse than a refusal, so
-`plan_of()` raises `TypeError` ("not supported yet") instead of dropping them.
+`IsPathFile(min_size=...)` and `max_size=...` **are** emitted, as `minSize` and
+`maxSize`, and the widget weighs a chosen `File` against them so the bytes never
+move when the answer is already no. That is where its knowledge ends: a
+reference names a file the browser never saw, so it is not weighed, and neither
+is a default. The size that decides is the one `build()` measures on disk.
 
 ## Static data only
 

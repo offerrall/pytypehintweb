@@ -52,8 +52,11 @@ test("a single file node normalizes its full option set", () => {
     const options = {
         extensions: [], invalidMessage: "Not an accepted file type",
         multiple: false, minFiles: null, maxFiles: null,
+        minSize: null, maxSize: null,
         minMessage: "Add at least {value} files",
         maxMessage: "Keep at most {value} files",
+        minSizeMessage: "File is too small; minimum {value}",
+        maxSizeMessage: "File is too large; maximum {value}",
         currentLabel: "Current file: {value}", currentRemoveLabel: "Remove current file",
         currentReplaceLabel: "Replace file", currentRestoreLabel: "Restore current file",
     };
@@ -772,4 +775,258 @@ test("an optional file switched off reads null", () => {
     assert.equal(form.fields[0].widget.enabled(), false);
     assert.deepEqual(form.read(), { doc: null });
     assert.equal(form.isReady(), true);
+});
+
+
+// --- byte-size bounds -------------------------------------------------------
+
+// The size of a chosen file is the one thing about it the browser can weigh, so
+// the widget refuses a File that already breaks a bound instead of letting the
+// upload happen and the core refuse it afterwards. A reference carries no bytes,
+// so it is never weighed here.
+
+function sized(widget, ...pairs) {
+    widget.input.files = pairs.map(([name, size]) => ({ name, size }));
+    widget.input.dispatch("change");
+}
+
+
+function bounded(extra = {}) {
+    return new FileWidget({
+        extensions: [".pdf"], minSize: 100, maxSize: 1000, ...extra,
+    });
+}
+
+
+test("a file inside the bounds is accepted", () => {
+    const widget = bounded();
+
+    sized(widget, ["report.pdf", 500]);
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.isReady(), true);
+    assert.match(widget.value(), REFERENCE);
+});
+
+
+test("exactly the minimum and exactly the maximum are both inside", () => {
+    for (const size of [100, 1000]) {
+        const widget = bounded();
+
+        sized(widget, ["report.pdf", size]);
+
+        assert.equal(widget.hasError(), false, `size ${size}`);
+        assert.equal(widget.isReady(), true, `size ${size}`);
+    }
+});
+
+
+test("one byte below the minimum is refused", () => {
+    const widget = bounded();
+
+    sized(widget, ["report.pdf", 99]);
+
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.isReady(), false);
+    assert.match(widget.error(), /too small/);
+});
+
+
+test("one byte above the maximum is refused", () => {
+    const widget = bounded();
+
+    sized(widget, ["report.pdf", 1001]);
+
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.isReady(), false);
+    assert.match(widget.error(), /too large/);
+});
+
+
+test("a refused file mints no reference and no upload", () => {
+    const widget = bounded();
+
+    sized(widget, ["report.pdf", 5000]);
+
+    assert.equal(widget.value(), null);
+    assert.deepEqual(widget.uploads(), []);
+});
+
+
+test("the message names the bound the way the widget names a size", () => {
+    const widget = new FileWidget({ minSize: 2048 });
+
+    sized(widget, ["report.pdf", 1]);
+
+    assert.equal(widget.error(), "File is too small; minimum 2 KB");
+});
+
+
+test("the size messages are configurable", () => {
+    const widget = new FileWidget({
+        maxSize: 10, maxSizeMessage: "Over {value}",
+    });
+
+    sized(widget, ["report.pdf", 11]);
+
+    assert.equal(widget.error(), "Over 10 B");
+});
+
+
+test("without a bound nothing is weighed", () => {
+    const widget = new FileWidget();
+
+    sized(widget, ["report.pdf", 0]);
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.isReady(), true);
+});
+
+
+test("choosing a valid file clears a size error", () => {
+    const widget = bounded();
+
+    sized(widget, ["report.pdf", 5000]);
+    assert.equal(widget.hasError(), true);
+
+    sized(widget, ["report.pdf", 500]);
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.error(), null);
+    assert.match(widget.value(), REFERENCE);
+});
+
+
+test("removing the selection clears a size error", () => {
+    const widget = bounded({ multiple: true });
+
+    widget._ingest([{ name: "big.pdf", size: 5000 }], true);
+    assert.equal(widget.hasError(), true);
+
+    widget.setValue(null);
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.error(), null);
+});
+
+
+test("an extension failure is reported before a size failure", () => {
+    const widget = bounded();
+
+    sized(widget, ["notes.txt", 5000]);
+
+    assert.equal(widget.error(), "Not an accepted file type");
+});
+
+
+test("in a multiple widget every file is weighed on its own", () => {
+    const widget = bounded({ multiple: true });
+
+    sized(widget, ["a.pdf", 900], ["b.pdf", 900], ["c.pdf", 900]);
+
+    // 2700 bytes in total, over maxSize, but no file is: the bound is per file.
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.uploads().length, 3);
+});
+
+
+test("one oversized file refuses the whole batch it arrived in", () => {
+    const widget = bounded({ multiple: true });
+
+    sized(widget, ["a.pdf", 500], ["b.pdf", 5000]);
+
+    assert.equal(widget.hasError(), true);
+    assert.deepEqual(widget.value(), []);
+    assert.deepEqual(widget.uploads(), []);
+});
+
+
+test("an appended oversized file leaves the accepted ones alone", () => {
+    const widget = bounded({ multiple: true });
+
+    sized(widget, ["a.pdf", 500]);
+    widget._ingest([{ name: "big.pdf", size: 5000 }], true);
+
+    assert.equal(widget.hasError(), true);
+    assert.equal(widget.isReady(), false);
+    assert.equal(widget.value().length, 1);
+});
+
+
+test("a planted reference is never weighed", () => {
+    const widget = bounded();
+
+    widget.setValue("uploads/whatever.pdf");
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.isReady(), true);
+    assert.equal(widget.value(), "uploads/whatever.pdf");
+    assert.deepEqual(widget.uploads(), []);
+});
+
+
+test("a default plants a reference without weighing it either", () => {
+    const form = compileForm(plan([{
+        name: "doc",
+        hasDefault: true,
+        default: "uploads/existing.pdf",
+        node: { kind: "file", options: {
+            extensions: [".pdf"], minSize: 100, maxSize: 1000 } },
+    }]));
+
+    assert.equal(form.hasError(), false);
+    assert.equal(form.isReady(), true);
+    assert.deepEqual(form.read(), { doc: "uploads/existing.pdf" });
+    assert.deepEqual(form.uploads(), []);
+});
+
+
+test("the bounds reach a file node nested in a list of groups", () => {
+    const file = { kind: "file", options: {
+        extensions: [".pdf"], minSize: 100, maxSize: 1000 } };
+
+    const form = compileForm(plan([{
+        name: "reports",
+        node: { kind: "list", item: { kind: "object", fields: [
+            { name: "doc", node: file },
+        ] } },
+    }]));
+
+    const list = form.fields[0].widget.widget;
+    list.add();
+
+    const widget = list.widgets()[0].children[0].widget.widget;
+
+    sized(widget, ["deep.pdf", 5000]);
+
+    assert.equal(widget.hasError(), true);
+    assert.equal(form.isReady(), false);
+    assert.deepEqual(form.uploads(), []);
+});
+
+
+test("a node whose minSize exceeds its maxSize is refused", () => {
+    rejects(plan([{ name: "a", node: {
+        kind: "file", options: { minSize: 10, maxSize: 5 } } }]),
+            "minSize: must not exceed maxSize");
+});
+
+
+test("a size bound must be a non-negative integer", () => {
+    for (const bad of [-1, 1.5, true, "10"]) {
+        rejects(plan([{ name: "a", node: {
+            kind: "file", options: { minSize: bad } } }]),
+                "node.options.minSize");
+    }
+});
+
+
+test("size bounds are legal on a single node, not only a multiple one", () => {
+    // minFiles / maxFiles need a multiple node; the byte bounds are per file,
+    // so they carry no such rule.
+    const checked = checkPlan(plan([{ name: "a", node: {
+        kind: "file", options: { multiple: false, minSize: 1, maxSize: 2 } } }]));
+
+    assert.equal(checked.fields[0].node.options.minSize, 1);
+    assert.equal(checked.fields[0].node.options.maxSize, 2);
 });

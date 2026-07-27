@@ -212,14 +212,20 @@ the full walk it covers.
 | Annotation | Plan option |
 | --- | --- |
 | `IsPathFile(extensions=...)` | `extensions` — lowercase, dotted, possibly empty (any file), mapped to the input's `accept` |
-| `IsPathFile(min_size=...)` / `max_size=...` | **not emitted** — `TypeError` ("not supported yet") |
+| `IsPathFile(min_size=...)` / `max_size=...` | `minSize` / `maxSize` — bytes, per file, `null` when unbounded |
 | `list[Annotated[str, IsPathFile(...)]]` | one file node with `multiple: true`; the list's `Min`/`Max` become `minFiles`/`maxFiles` |
 
-The byte-size bounds are deferred rather than dropped. The plan has no way to
-carry them and the widget has no way to show them, so a form would accept a file
-the core then refuses *after* the upload already happened. `plan_of()` refuses
-the plan instead, which is the honest answer until the widget checks `File.size`
-itself.
+The byte bounds are **per file**, never a combined total: three 4 MB files under
+a 5 MB `max_size` are three valid files. Counting them is `minFiles` / `maxFiles`,
+a separate question.
+
+What the browser does with them is a courtesy. A local `File` carries a `.size`,
+so the widget refuses one that already breaks a bound before any upload happens
+— the point being to fail before the bytes move, not instead of the core. A
+reference the host plants carries no bytes at all, so nothing weighs it there,
+and neither reading changes the verdict: `build()` measures the real file. The
+only bound that has to be a safe JavaScript integer is the one written into the
+plan; `plan_of()` refuses a larger one rather than rounding it.
 
 **A file composes like any other node.** There is no rule about files in lists,
 in structs or in unions: a shape is representable when each of its nodes is, and
@@ -319,9 +325,10 @@ Only a bare `IsPathFile` is emitted today. The other `Str` atoms — `Min`, `Max
 `Pattern`, `Choices`, `IsPassword`, `Rows`, `Placeholder` — describe a text box
 and have no meaning on a file control, so any of them alongside `IsPathFile`
 raises `TypeError` ("not supported yet"), deferred until a real case asks for it,
-exactly as `Float.slider` is. The same applies to `IsPathFile`'s own `min_size`
-and `max_size`. `Label` and `Description` are the field's, not the `Str`'s, so a
-labelled file field is fine.
+exactly as `Float.slider` is. `IsPathFile`'s own `min_size` and `max_size` are
+**not** among them: they describe the file, not a text box, and they travel.
+`Label` and `Description` are the field's, not the `Str`'s, so a labelled file
+field is fine.
 
 ### Patterns
 
@@ -811,6 +818,8 @@ class WebConfig:
     file_invalid_message: str = "Not an accepted file type"
     file_min_message: str = "Add at least {value} files"
     file_max_message: str = "Keep at most {value} files"
+    file_min_size_message: str = "File is too small; minimum {value}"
+    file_max_size_message: str = "File is too large; maximum {value}"
     file_current_label: str = "Current file: {value}"
     file_current_remove_label: str = "Remove current file"
     file_current_replace_label: str = "Replace file"

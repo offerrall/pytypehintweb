@@ -44,8 +44,12 @@ def test_plan_of_emits_a_single_file_node():
             "multiple": False,
             "minFiles": None,
             "maxFiles": None,
+            "minSize": None,
+            "maxSize": None,
             "minMessage": "Add at least {value} files",
             "maxMessage": "Keep at most {value} files",
+            "minSizeMessage": "File is too small; minimum {value}",
+            "maxSizeMessage": "File is too large; maximum {value}",
             "currentLabel": "Current file: {value}",
             "currentRemoveLabel": "Remove current file",
             "currentReplaceLabel": "Replace file",
@@ -95,27 +99,118 @@ def test_ispathfile_with_another_str_atom_is_deferred(name, make_atom, tmp_path)
         plan_of(f)
 
 
-@pytest.mark.parametrize("name, mark", [
-    ("min_size", IsPathFile(min_size=1)),
-    ("max_size", IsPathFile(max_size=1024)),
+def test_a_plain_ispathfile_carries_no_size_bounds():
+    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+
+    node = _node(f)
+
+    assert node["kind"] == "file"
+    assert node["options"]["minSize"] is None
+    assert node["options"]["maxSize"] is None
+
+
+# --- byte-size bounds -------------------------------------------------------
+
+# A restriction the browser cannot weigh must not stop the type from being
+# representable. The bounds travel on the node so a local File can be refused
+# before it is uploaded; a reference carries no bytes, so only the core's
+# verdict on the real file is final.
+
+@pytest.mark.parametrize("mark, expected", [
+    (IsPathFile(min_size=1), (1, None)),
+    (IsPathFile(max_size=1024), (None, 1024)),
+    (IsPathFile(min_size=1, max_size=1_000_000), (1, 1_000_000)),
+    (IsPathFile(min_size=0), (0, None)),
+    (IsPathFile(min_size=512, max_size=512), (512, 512)),
 ])
-def test_ispathfile_byte_size_bounds_are_deferred(name, mark):
-    # pytypehint 0.0.7 added byte-size bounds to IsPathFile and enforces them on
-    # the way in. The plan cannot express them and the widget cannot show them, so
-    # a form would happily accept a file the core then refuses after the upload
-    # has already happened. The adapter refuses the plan instead of dropping the
-    # bound silently — deferred until the widget can check File.size.
+def test_byte_size_bounds_travel_on_the_file_node(mark, expected):
     def f(value: Annotated[str, mark]) -> None: ...
 
-    with pytest.raises(TypeError,
-                       match=f"IsPathFile.{name} is not supported yet"):
+    options = _node(f)["options"]
+
+    assert (options["minSize"], options["maxSize"]) == expected
+
+
+def test_the_size_messages_come_from_the_web_config():
+    def f(value: Annotated[str, IsPathFile(min_size=1, max_size=2)]) -> None: ...
+
+    config = WebConfig(file_min_size_message="Under {value}",
+                       file_max_size_message="Over {value}")
+    options = plan_of(f, config=config)["fields"][0]["node"]["options"]
+
+    assert options["minSizeMessage"] == "Under {value}"
+    assert options["maxSizeMessage"] == "Over {value}"
+
+
+def test_a_size_bound_beyond_the_safe_integer_range_is_refused():
+    # The plan is JSON read by JavaScript. The core has no reason to care, so
+    # this is the one thing left to check here.
+    def f(value: Annotated[str, IsPathFile(max_size=2 ** 60)]) -> None: ...
+
+    with pytest.raises(TypeError, match="IsPathFile.max_size"):
         plan_of(f)
 
 
-def test_a_plain_ispathfile_is_unaffected_by_the_size_deferral():
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+def test_the_bounds_survive_json():
+    def f(value: Annotated[str, IsPathFile(min_size=1, max_size=1024)]) -> None: ...
 
-    assert _node(f)["kind"] == "file"
+    options = json.loads(json.dumps(_node(f)))["options"]
+
+    assert options["minSize"] == 1
+    assert options["maxSize"] == 1024
+
+
+def _file_options(plan):
+    """Every file node in a plan, however deep, in document order."""
+    found = []
+
+    def walk(value):
+        if type(value) is dict:
+            if value.get("kind") == "file":
+                found.append(value["options"])
+
+            for item in value.values():
+                walk(item)
+        elif type(value) is list:
+            for item in value:
+                walk(item)
+
+    walk(plan)
+
+    return found
+
+
+_BOUNDED = Annotated[str, IsPathFile(extensions=(".pdf",),
+                                     min_size=10, max_size=2048)]
+
+
+@dataclass
+class _Report:
+    document: _BOUNDED
+    title: str = "x"
+
+
+@pytest.mark.parametrize("name, annotation, nodes", [
+    ("File", _BOUNDED, 1),
+    ("File | None", _BOUNDED | None, 1),
+    ("list[File]", list[_BOUNDED], 1),
+    ("list[File | None]", list[_BOUNDED | None], 1),
+    ("list[File | int]", list[_BOUNDED | int], 1),
+    ("list[list[File]]", list[list[_BOUNDED]], 1),
+    ("dataclass with File", _Report, 1),
+    ("list[dataclass with File]", list[_Report], 1),
+])
+def test_the_bounds_reach_every_file_node_however_composed(
+        name, annotation, nodes):
+    # The bounds belong to the file node, so they arrive wherever a file node
+    # arrives. Nothing in the adapter says "top level only".
+    def f(value: annotation) -> None: ...
+
+    found = _file_options(plan_of(f))
+
+    assert len(found) == nodes, name
+    assert all(o["minSize"] == 10 for o in found), name
+    assert all(o["maxSize"] == 2048 for o in found), name
 
 
 def test_ispathfile_composes_with_field_label_and_description():
@@ -313,12 +408,10 @@ def test_the_core_refuses_a_list_default_holding_one_missing_file(tmp_path):
     ("min_size", IsPathFile(min_size=100), 1, "file too small"),
     ("max_size", IsPathFile(max_size=100), 5000, "file too large"),
 ])
-def test_the_core_checks_byte_sizes_even_though_the_plan_defers_them(
+def test_the_core_checks_byte_sizes_on_a_default(
         tmp_path, name, mark, size, message):
-    # The two halves are independent and both matter. The core knows how to
-    # validate a byte bound and does so on the default; the adapter still has no
-    # way to carry that bound into the plan, so a schema that satisfies the core
-    # is then refused at the plan. Neither is silent.
+    # A default is a real file the core weighs before the plan exists, so a
+    # form is never rendered around a value that already breaks its own bound.
     too_wrong = _stored(tmp_path, f"{name}.pdf", b"x" * size)
 
     def f(value: Annotated[str, mark] = too_wrong) -> None: ...
@@ -327,14 +420,23 @@ def test_the_core_checks_byte_sizes_even_though_the_plan_defers_them(
         plan_of(f)
 
 
-def test_a_size_bounded_file_is_still_deferred_by_the_plan(tmp_path):
-    right_size = _stored(tmp_path, "fine.pdf", b"x" * 500)
+@pytest.mark.parametrize("name, size", [
+    ("exactly the minimum", 100),
+    ("exactly the maximum", 1000),
+    ("between the two", 500),
+])
+def test_a_default_inside_the_bounds_reaches_the_plan(tmp_path, name, size):
+    right_size = _stored(tmp_path, f"{size}.pdf", b"x" * size)
 
-    def f(value: Annotated[str, IsPathFile(min_size=1, max_size=1000)]
+    def f(value: Annotated[str, IsPathFile(min_size=100, max_size=1000)]
           = right_size) -> None: ...
 
-    with pytest.raises(TypeError, match="IsPathFile.min_size is not supported yet"):
-        plan_of(f)
+    field = plan_of(f)["fields"][0]
+
+    assert field["hasDefault"] is True
+    assert field["default"] == right_size
+    assert field["node"]["options"]["minSize"] == 100
+    assert field["node"]["options"]["maxSize"] == 1000
 
 
 @pytest.mark.parametrize("name, bounds", [

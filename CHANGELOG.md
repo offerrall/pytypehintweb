@@ -95,9 +95,33 @@ and the guarantee arrives later, when the host resolves it with
 Both land the widget in the same observable state; only the first has been
 checked by render time.
 
-`IsPathFile(min_size=...)` and `max_size=...` remain deferred by the plan, and
-the two halves are now pinned separately: the core does validate a byte bound on
-a default, and the adapter still refuses to emit a plan it could not honour.
+`IsPathFile(min_size=...)` and `max_size=...` stopped being refused and started
+being carried. The refusal rested on a rule worth stating the other way round:
+**a restriction the browser cannot check must not make the type unrepresentable.**
+Refusing the plan did not protect anyone — it only meant a schema the core
+validates perfectly could not produce a form at all.
+
+They travel as `minSize` and `maxSize` on the file node, in bytes and **per
+file**, so three 4 MB files under a 5 MB bound are three valid files; counting
+them stays `minFiles` / `maxFiles`. They belong to the node, so they arrive
+wherever a file node arrives — inside a list, a union branch, a nested struct —
+with no rule about depth.
+
+A local `File` carries a `.size`, so `FileWidget` now weighs one and refuses it
+before any upload: exactly at a bound is inside, one byte past it is not, the
+message names the bound the way the widget names a size ("minimum 2 KB"), the
+error joins `hasError()` / `isReady()` / `showErrors()`, and a refused pick mints
+no reference, so `uploads()` never offers it. A batch that contains one bad file
+is refused whole rather than half-accepted. `WebConfig` gained
+`file_min_size_message` and `file_max_size_message` for the two texts.
+
+What the widget does **not** do is guess. A reference the host plants — a
+default, or a runtime `setValue()` — names a file the browser never saw, so it
+carries no size and none is invented, no request is made to find one out, and
+nothing marks it as certified. Both readings end in the same place: `build()`
+measures the real file. That is what a hand-written HTTP call, a stale
+reference, or a file edited after upload all run into, and it is why the browser
+check is a courtesy rather than the verdict.
 
 Every icon the interface draws is a file now. The select arrow was a
 `data:image/svg+xml` written into `widgets.css` and the list's remove glyph was
@@ -347,6 +371,7 @@ to show one, so a form would have accepted a file the core then rejected *after*
 the upload had already happened. `plan_of()` raises `TypeError`
 ("`IsPathFile.min_size` is not supported yet"), the same deferral `Float.slider`
 and the other `Str` atoms get, until the widget can check `File.size` itself.
+(Reversed in 0.0.3: the widget checks it now, and the bounds travel.)
 
 Two testing defects surfaced while checking the theme work and are fixed here.
 The browser smoke page had never actually gated anything: CI matched a bare

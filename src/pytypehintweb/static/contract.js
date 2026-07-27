@@ -398,6 +398,8 @@ function checkFileNode(node, path) {
     checkTemplate(options.invalidMessage, `${path}.options.invalidMessage`, false);
     checkTemplate(options.minMessage, `${path}.options.minMessage`, true);
     checkTemplate(options.maxMessage, `${path}.options.maxMessage`, true);
+    checkTemplate(options.minSizeMessage, `${path}.options.minSizeMessage`, true);
+    checkTemplate(options.maxSizeMessage, `${path}.options.maxSizeMessage`, true);
     checkTemplate(options.currentLabel, `${path}.options.currentLabel`, true);
     checkLabel(options.currentRemoveLabel, `${path}.options.currentRemoveLabel`);
     checkLabel(options.currentReplaceLabel, `${path}.options.currentReplaceLabel`);
@@ -406,6 +408,11 @@ function checkFileNode(node, path) {
     if (options.minFiles !== null && options.maxFiles !== null
             && options.minFiles > options.maxFiles) {
         fail(`${path}.options.minFiles`, "must not exceed maxFiles");
+    }
+
+    if (options.minSize !== null && options.maxSize !== null
+            && options.minSize > options.maxSize) {
+        fail(`${path}.options.minSize`, "must not exceed maxSize");
     }
 
     if (!options.multiple
