@@ -12,6 +12,9 @@ CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
 def _brute_reaches(minimum, maximum, step, multiple):
+    # The maximum is a slider position in its own right, reachable even when the
+    # stride does not divide the range evenly, so the walk covers the stride grid
+    # and then the maximum.
     value = minimum
 
     while value <= maximum:
@@ -19,7 +22,7 @@ def _brute_reaches(minimum, maximum, step, multiple):
             return True
         value += step
 
-    return False
+    return maximum % multiple == 0
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
@@ -38,6 +41,14 @@ def test_the_shared_vectors_cover_the_documented_situations():
     assert any(c["minimum"] < 0 for c in CASES)
     assert any(c["minimum"] == c["maximum"] for c in CASES)
     assert any(c["maximum"] >= 2 ** 53 - 1 for c in CASES)
+
+    # A maximum the stride cannot land on is still a position, so both outcomes
+    # of the off-grid maximum are pinned.
+    off_grid = [c for c in CASES
+                if (c["maximum"] - c["minimum"]) % c["step"] != 0]
+
+    assert any(c["first"] == c["maximum"] for c in off_grid)
+    assert any(not c["reachable"] for c in off_grid)
 
 
 def test_the_optimized_solver_matches_brute_force_on_small_ranges():

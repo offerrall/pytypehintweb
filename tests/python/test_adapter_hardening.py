@@ -209,10 +209,30 @@ def slider_exclusive_multiple(
     ...
 
 
+def slider_off_grid_maximum(
+    value: Annotated[int, Min(1), Max(100), Step(5), Slider()],
+):
+    # Stepping by 5 from 1 stops at 96, so the maximum is not a step position.
+    # It is a slider position all the same, which is what the browser has to
+    # accept and offer.
+    ...
+
+
+def slider_off_grid_maximum_multiple(
+    value: Annotated[
+        int, Min(1), Max(100), Step(5), MultipleOf(100), Slider(),
+    ],
+):
+    # No step position is a multiple of 100; the maximum is, so the slider is
+    # reachable and starts there.
+    ...
+
+
 def test_every_generated_slider_plan_is_accepted_by_javascript(node, tmp_path):
     # Inclusive bounds, exclusive bounds after integer conversion, negative
-    # bounds, Step, MultipleOf and Step + MultipleOf: every slider plan_of()
-    # can emit must be accepted by the browser's checkPlan().
+    # bounds, a maximum the stride cannot land on, Step, MultipleOf and
+    # Step + MultipleOf: every slider plan_of() can emit must be accepted by
+    # the browser's checkPlan().
     plans = {
         name: plan_of(fn)
         for name, fn in [
@@ -222,6 +242,8 @@ def test_every_generated_slider_plan_is_accepted_by_javascript(node, tmp_path):
             ("negative", slider_negative),
             ("exclusive", slider_exclusive),
             ("exclusive_multiple", slider_exclusive_multiple),
+            ("off_grid_maximum", slider_off_grid_maximum),
+            ("off_grid_maximum_multiple", slider_off_grid_maximum_multiple),
         ]
     }
 

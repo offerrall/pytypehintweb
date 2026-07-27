@@ -28,8 +28,8 @@ Any other scalar shape raises:
 Float.slider is not supported yet
 ```
 
-A slider is a grid of `min + k*step` positions, and float arithmetic cannot walk
-that grid exactly: `min + k*step` accumulates rounding, so a legitimate default
+A slider is a grid of `min + k*step` positions plus `max`, and float arithmetic
+cannot walk that grid exactly: `min + k*step` accumulates rounding, so a legitimate default
 could fall just off a position and be refused, or the control would have to
 silently snap a value to the nearest step. The doctrine forbids both — no
 rejecting a valid value, no silent correction — so a float slider is not offered

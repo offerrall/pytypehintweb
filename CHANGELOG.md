@@ -88,6 +88,31 @@ is unchanged — it still demands the canonical `HH:MM:SS`. Bounds are compared
 after completion, so an exclusive `09:00:00` still rejects a picked `09:00`, and
 `read()` transports whole seconds exactly as before.
 
+A slider now reaches its maximum even when the stride cannot land on it.
+`Annotated[int, Min(1), Max(100), Step(5), Slider()]` used to stop at 96: the
+grid was `min + k*step` and nothing else, so `100` — a value the plan itself
+declares valid — was impossible to choose. The control was refusing a valid
+value, which the doctrine forbids. The maximum is now a grid position of its
+own, reached by a final short step (`… 91, 96, 100`).
+
+Only the maximum is added, never a value inside a stride: `97`, `98` and `99`
+are still refused, exactly as `2` and `3` are. `multipleOf` reachability follows
+the same grid, so a slider whose only valid multiple *is* the maximum is
+reachable and starts there instead of being rejected as unsatisfiable. The rule
+lives in `slider.js` and is read by both the widget and `checkPlan()`, and the
+Python adapter's `_slider_reaches` and slider-default check match it, so a plan
+`plan_of()` emits and a plan the browser accepts still agree exactly.
+
+A native `<input type="range">` cannot express this grid — it only offers
+`min + k*step` and snaps anything else — so a slider whose stride misses the
+maximum now drives its range input by grid *index* and maps index to value, and
+carries `aria-valuetext` so a screen reader announces the value rather than the
+index. The value contract is untouched: `value()` returns the integer,
+`setValue()` takes the integer, and an off-grid value is still refused rather
+than silently snapped. A slider whose stride *does* divide its range is
+unchanged in every respect — its range input still carries the real `min`, `max`
+and `step`, with no mapping.
+
 
 ## [0.0.1] - 2026-07-22
 

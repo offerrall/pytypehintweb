@@ -28,23 +28,21 @@ export function firstSliderValue(minimum, maximum, stride, multipleOf) {
 
     const divisor = gcd(step, factor);
 
-    if (start % divisor !== 0n) {
-        return null;
+    if (start % divisor === 0n) {
+        const modulus = factor / divisor;
+        const steps = modulus === 1n
+            ? 0n
+            : (((-start / divisor) % modulus) + modulus) % modulus
+                * inverse(step / divisor, modulus) % modulus;
+
+        const candidate = start + steps * step;
+
+        if (candidate <= end) {
+            return Number(candidate);
+        }
     }
 
-    const modulus = factor / divisor;
-    const steps = modulus === 1n
-        ? 0n
-        : (((-start / divisor) % modulus) + modulus) % modulus
-            * inverse(step / divisor, modulus) % modulus;
-
-    const candidate = start + steps * step;
-
-    if (candidate > end) {
-        return null;
-    }
-
-    return Number(candidate);
+    return end % factor === 0n ? Number(end) : null;
 }
 
 
@@ -53,6 +51,39 @@ export function sliderReaches(minimum, maximum, stride, multipleOf) {
 }
 
 
-export function onSliderGrid(value, minimum, stride) {
+function onStride(value, minimum, stride) {
     return (BigInt(value) - BigInt(minimum)) % BigInt(stride) === 0n;
+}
+
+
+export function sliderAligned(minimum, maximum, stride) {
+    return onStride(maximum, minimum, stride);
+}
+
+
+export function onSliderGrid(value, minimum, maximum, stride) {
+    return value === maximum || onStride(value, minimum, stride);
+}
+
+
+export function sliderLastIndex(minimum, maximum, stride) {
+    const strides = (BigInt(maximum) - BigInt(minimum)) / BigInt(stride);
+
+    return Number(sliderAligned(minimum, maximum, stride)
+        ? strides
+        : strides + 1n);
+}
+
+
+export function sliderValueAt(minimum, maximum, stride, index) {
+    const value = BigInt(minimum) + BigInt(index) * BigInt(stride);
+
+    return value < BigInt(maximum) ? Number(value) : maximum;
+}
+
+
+export function sliderIndexOf(minimum, maximum, stride, value) {
+    return value === maximum
+        ? sliderLastIndex(minimum, maximum, stride)
+        : Number((BigInt(value) - BigInt(minimum)) / BigInt(stride));
 }

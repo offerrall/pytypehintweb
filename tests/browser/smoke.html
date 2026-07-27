@@ -42,6 +42,9 @@ try {
             { name: "at", label: "At", node: { kind: "time" } },
             { name: "level", label: "Level",
               node: { kind: "int", options: { slider: true, min: 0, max: 10, step: 2 } } },
+            { name: "reach", label: "Reach",
+              node: { kind: "int", options: {
+                  slider: true, min: 1, max: 100, step: 5, showValue: true } } },
             { name: "nick", label: "Nick", optional: true, enabled: false,
               node: { kind: "str" } },
             { name: "who", label: "Who", node: {
@@ -85,6 +88,23 @@ try {
     check("slider rejects an off-grid value", threw(() => slider.setValue(3)));
     check("slider rejects an out-of-range value", threw(() => slider.setValue(12)));
     check("slider keeps its value after a rejected setValue", slider.value() === 4);
+
+    // the maximum is a position even when the stride cannot land on it: only a
+    // real browser proves the native range input actually reaches its far end
+    const reach = by("reach").widget;
+    const range = reach.control();
+    range.value = range.max;
+    range.dispatchEvent(new Event("input"));
+    check("an off-grid slider reaches its maximum", reach.value() === 100);
+    check("its readout shows the value, not the index",
+          reach.readout.textContent === "100");
+    check("it announces the value to a screen reader",
+          range.getAttribute("aria-valuetext") === "100");
+    reach.setValue(96);
+    check("the step below the maximum is the last full stride",
+          reach.value() === 96);
+    check("a value between the last stride and the maximum is refused",
+          threw(() => reach.setValue(98)));
 
     // optional toggle
     const nick = by("nick");

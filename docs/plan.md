@@ -492,13 +492,42 @@ ordinary numeric stepper stride   step, else multipleOf, else 1
 slider grid stride                step, else 1
 ```
 
-`step` (default `1`) is the slider grid, `minimum + k * step`. `multipleOf`
-decides which represented integers are *valid*, and is never
+`step` (default `1`) is the slider grid, `minimum + k * step`, **plus `maximum`
+itself**. `multipleOf` decides which represented integers are *valid*, and is never
 used as the slider stride. So `Annotated[int, Slider(), Step(5), MultipleOf(5)]` lands only on
 multiples of 5, whereas `Slider(), MultipleOf(5)` alone keeps the default stride
 of 1 and can stop on intermediate invalid positions. On an ordinary input the
 `▲`/`▼` arrows step by `multipleOf` when no explicit `step` is given — a
 widget-local increment, not a copy of `multipleOf` into `step`.
+
+### The maximum is always a position
+
+When the stride does not divide the range evenly, the last full step falls short
+of `maximum`. `min 1, max 100, step 5` steps `1, 6, … 96`: `100` is a value the
+plan declares valid, and a slider that could not reach it would be refusing a
+valid value — which the doctrine forbids. So `maximum` is a grid position of its
+own, reached by a final short step:
+
+```text
+1 ─ 6 ─ … ─ 91 ─ 96 ─ 100
+                  └─ 4, not 5
+```
+
+The positions *between* the last full step and the maximum are not on the grid:
+`97`, `98` and `99` are refused exactly as `2` or `3` are. Only `maximum` is
+added, never a value inside a stride.
+
+A native `<input type="range">` cannot express this — it only offers
+`min + k*step` and snaps anything else — so a widget whose stride misses the
+maximum drives its range input by grid *index* (`min 0`, `max` the last index,
+`step 1`) and maps index to value. The value contract is unchanged: `value()`
+returns the integer, `setValue()` takes the integer. An indexed slider carries
+`aria-valuetext` so a screen reader announces the value rather than the index.
+When the stride does divide the range, the range input still carries the real
+`min`, `max` and `step`, and no mapping happens.
+
+`multipleOf` reachability follows the same grid: a slider whose only valid
+multiple *is* the maximum is reachable and starts there.
 
 A malformed integer that cannot be parsed at all (`abc`, `1.5`, `1-2`) shows
 `invalidMessage`; a syntactically valid integer outside JavaScript's safe range
@@ -1067,7 +1096,7 @@ compatible and constraint-valid, not merely shape-compatible:
 | Node       | Default value                                             |
 | ---------- | --------------------------------------------------------- |
 | `str`      | a string satisfying `minLength`, `maxLength`, `pattern`, and one of `choices` when declared |
-| `int`      | a safe integer satisfying `min`, `max`, `multipleOf`, one of `choices` when declared, and the slider `Step` grid on a slider node |
+| `int`      | a safe integer satisfying `min`, `max`, `multipleOf`, one of `choices` when declared, and the slider `Step` grid — `max` included — on a slider node |
 | `float`    | a finite number satisfying `min`, `max` with their exclusivity, and one of `choices` when declared |
 | `date`     | a canonical ISO date string (`YYYY-MM-DD`) satisfying `min`, `max`, and one of `choices` when declared |
 | `time`     | a canonical ISO time string (`HH:MM:SS`) satisfying `min`, `max` with their exclusivity, and one of `choices` when declared |

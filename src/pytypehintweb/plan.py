@@ -507,18 +507,19 @@ def _slider_reaches(minimum: int, maximum: int, step: int, multiple: int) -> boo
 
     divisor = gcd(step, multiple)
 
-    if minimum % divisor != 0:
-        return False
+    if minimum % divisor == 0:
+        modulus = multiple // divisor
 
-    modulus = multiple // divisor
+        if modulus == 1:
+            steps = 0
+        else:
+            steps = ((-minimum // divisor) % modulus
+                     * _mod_inverse(step // divisor, modulus)) % modulus
 
-    if modulus == 1:
-        steps = 0
-    else:
-        steps = ((-minimum // divisor) % modulus
-                 * _mod_inverse(step // divisor, modulus)) % modulus
+        if minimum + steps * step <= maximum:
+            return True
 
-    return minimum + steps * step <= maximum
+    return maximum % multiple == 0
 
 
 def _check_slider(minimum, maximum, step, multiple, path: str) -> None:
@@ -1056,11 +1057,15 @@ def _plain_value(shape, value, path: str):
 def _check_slider_default(shape, value: int, path: str) -> None:
     # The core validates a default against min, max and multiple_of but not
     # against the slider's Step grid, so a default no step position can reach is
-    # rejected here rather than left for the browser.
+    # rejected here rather than left for the browser. The maximum is always a
+    # position, even when the stride does not divide the range evenly.
     if shape.slider is None or shape.step is None:
         return
 
     minimum = _bound(shape.min, 1, path, "Int.min")
+
+    if value == _bound(shape.max, -1, path, "Int.max"):
+        return
 
     if minimum is not None and (value - minimum) % shape.step.value != 0:
         raise _error(

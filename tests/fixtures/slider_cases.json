@@ -115,5 +115,32 @@
     "multipleOf": 1,
     "reachable": true,
     "first": 0
+  },
+  {
+    "name": "off_grid_maximum_is_the_only_multiple",
+    "minimum": 1,
+    "maximum": 100,
+    "step": 5,
+    "multipleOf": 100,
+    "reachable": true,
+    "first": 100
+  },
+  {
+    "name": "off_grid_maximum_is_not_a_multiple",
+    "minimum": 1,
+    "maximum": 10,
+    "step": 4,
+    "multipleOf": 20,
+    "reachable": false,
+    "first": null
+  },
+  {
+    "name": "off_grid_maximum_at_zero",
+    "minimum": -9,
+    "maximum": 0,
+    "step": 4,
+    "multipleOf": 100,
+    "reachable": true,
+    "first": 0
   }
 ]

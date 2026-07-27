@@ -73,9 +73,19 @@ import { MODULES, measure } from "./size-report.mjs";
 // 116_829 (-26_301) and gzip 33_337 -> 21_939 (-11_398). The ceilings drop with
 // them, keeping roughly the same headroom as before so the budget still catches
 // bloat instead of quietly absorbing it.
-const RAW_CEILING = 118_000;
-const GZIP_CEILING = 22_400;
-const PER_FILE_RAW_CEILING = 45_000;
+// Nudged for the slider's off-grid maximum: when the stride does not divide the
+// range evenly (min 1, max 100, step 5) the maximum used to be unreachable,
+// because a native range input only offers min + k*step. The maximum is now a
+// position of its own, so the widget drives the range input by grid index and
+// maps index <-> value, slider.js grew the grid arithmetic (sliderAligned,
+// sliderLastIndex, sliderValueAt, sliderIndexOf) that the widget and checkPlan
+// share, and an indexed slider carries aria-valuetext so a screen reader
+// announces the value rather than the index. Measured with LF: raw 117_078 ->
+// 118_875 (+1_797, spread over inputs.js +841, slider.js +943 and contract.js
+// +13) and gzip 22_022 -> 22_385 (+363).
+const RAW_CEILING = 120_000;
+const GZIP_CEILING = 22_800;
+const PER_FILE_RAW_CEILING = 46_000;
 
 
 test("the runtime ships exactly the expected modules", () => {

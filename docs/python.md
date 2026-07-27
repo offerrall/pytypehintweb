@@ -785,7 +785,8 @@ converted for the browser, and rejects:
 - sliders without both converted bounds;
 - sliders with no reachable valid position;
 - converted defaults the browser could not represent or validate — including a
-  slider default that lands off the `Step` grid.
+  slider default that lands off the `Step` grid (the converted `max` is on that
+  grid whether or not the stride divides the range).
 
 The full split is in the
 [architecture](architecture.md#who-owns-which-rule).

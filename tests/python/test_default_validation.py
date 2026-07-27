@@ -79,3 +79,22 @@ def test_an_on_grid_slider_default_is_accepted():
     ) -> None: ...
 
     assert plan_of(example)["fields"][0]["default"] == 15
+
+
+def test_the_maximum_is_a_slider_default_even_off_the_step_grid():
+    def example(
+        value: Annotated[int, Min(1), Max(100), Step(5), Slider()] = 100,
+    ) -> None: ...
+
+    # Stepping by 5 from 1 stops at 96, but the maximum is a position of its
+    # own, so 100 is a default the slider can hold.
+    assert plan_of(example)["fields"][0]["default"] == 100
+
+
+def test_a_default_between_the_last_step_and_the_maximum_is_rejected():
+    def example(
+        value: Annotated[int, Min(1), Max(100), Step(5), Slider()] = 98,
+    ) -> None: ...
+
+    with pytest.raises(TypeError, match="not on the grid"):
+        plan_of(example)

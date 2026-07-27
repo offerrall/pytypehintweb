@@ -559,7 +559,7 @@ function checkIntDefault(options, value, path) {
     if (options.slider) {
         const step = options.step === null ? 1 : options.step;
 
-        if (!onSliderGrid(value, options.min, step)) {
+        if (!onSliderGrid(value, options.min, options.max, step)) {
             fail(path,
                  `is not on the slider grid stepping by ${step} from `
                  + `${options.min}`);

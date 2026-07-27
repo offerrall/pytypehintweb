@@ -4,7 +4,10 @@ import {
 } from "./defaults.js";
 import { Widget, createMessage, renderMessage } from "./fields.js";
 import { isValidIsoDate } from "./iso.js";
-import { firstSliderValue, onSliderGrid } from "./slider.js";
+import {
+    firstSliderValue, onSliderGrid, sliderAligned, sliderIndexOf,
+    sliderLastIndex, sliderValueAt,
+} from "./slider.js";
 
 const INTEGER = /^-?\d+$/;
 
@@ -996,15 +999,14 @@ export class IntWidget extends Widget {
             const grid = step ?? 1;
 
             this.sliderStride = grid;
+            this.sliderIndexed = !sliderAligned(min, max, grid);
             this.input.type = "range";
-            setAttributes(this.input, {
-                min,
-                max,
-                step: grid,
-            });
-            this.input.value = value === ""
-                ? String(this._initialSliderValue(min, max, grid))
-                : String(value);
+            setAttributes(this.input, this.sliderIndexed
+                ? { min: 0, max: sliderLastIndex(min, max, grid), step: 1 }
+                : { min, max, step: grid });
+            this._write(value === ""
+                ? this._initialSliderValue(min, max, grid)
+                : value);
 
             this.el.append(this.input);
 
@@ -1057,6 +1059,12 @@ export class IntWidget extends Widget {
             this._emitChange();
         });
         this._showMessage();
+    }
+
+    _write(value) {
+        this.input.value = String(this.sliderIndexed
+            ? sliderIndexOf(this.min, this.max, this.sliderStride, value)
+            : value);
     }
 
     _initialSliderValue(min, max, stride) {
@@ -1127,7 +1135,13 @@ export class IntWidget extends Widget {
             return { kind: "unsafe", value: null };
         }
 
-        return { kind: "value", value: Number(integer) };
+        return {
+            kind: "value",
+            value: this.sliderIndexed
+                ? sliderValueAt(this.min, this.max, this.sliderStride,
+                                Number(integer))
+                : Number(integer),
+        };
     }
 
     number() {
@@ -1157,7 +1171,7 @@ export class IntWidget extends Widget {
                     `slider value ${value} is outside ${this.min}..${this.max}`);
             }
 
-            if (!onSliderGrid(value, this.min, this.sliderStride)) {
+            if (!onSliderGrid(value, this.min, this.max, this.sliderStride)) {
                 throw new TypeError(
                     `slider value ${value} is not on the grid stepping by `
                     + `${this.sliderStride} from ${this.min}`);
@@ -1166,7 +1180,12 @@ export class IntWidget extends Widget {
     }
 
     _apply(value) {
-        this.input.value = value === null ? "" : String(value);
+        if (value === null) {
+            this.input.value = "";
+        } else {
+            this._write(value);
+        }
+
         this._showMessage();
     }
 
@@ -1212,8 +1231,16 @@ export class IntWidget extends Widget {
     }
 
     _showMessage() {
-        if (this.readout !== null) {
-            this.readout.textContent = this.input.value;
+        if (this.readout !== null || this.sliderIndexed) {
+            const shown = String(this.value());
+
+            if (this.readout !== null) {
+                this.readout.textContent = shown;
+            }
+
+            if (this.sliderIndexed) {
+                this.input.setAttribute("aria-valuetext", shown);
+            }
         }
 
         renderMessage(this.message, this.input, this.touched ? this.error() : null);
