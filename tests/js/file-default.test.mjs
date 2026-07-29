@@ -331,7 +331,7 @@ test("the current file is on screen either way", () => {
     })]).fields[0].widget.widget;
 
     assert.deepEqual(texts(shown.el, "pth-file-current-label"),
-                     ["Current file: stored/report.pdf"]);
+                     ["Current file: report.pdf"]);
 });
 
 

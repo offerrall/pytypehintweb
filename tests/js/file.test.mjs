@@ -536,7 +536,7 @@ test("setValue(string) shows the current file and transports it verbatim", () =>
     assert.equal(widget.isReady(), true);
     assert.equal(widget.current.hidden, false);
     assert.equal(widget.current.children[0].textContent,
-                 "Current file: uploads/old-report.pdf");
+                 "Current file: old-report.pdf");
     // The DOM shows the current-file display, not a selected File.
     assert.equal(widget.files().length, 0);
 });

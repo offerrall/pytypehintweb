@@ -62,6 +62,24 @@ function stringLength(value) {
 }
 
 
+const CURRENT_LABEL_LIMIT = 32;
+
+
+function compactReference(value) {
+    const text = String(value);
+    const cut = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+    const name = cut === -1 ? text : text.slice(cut + 1);
+    const label = name === "" ? text : name;
+    const characters = Array.from(label);
+
+    if (characters.length <= CURRENT_LABEL_LIMIT) {
+        return label;
+    }
+
+    return `…${characters.slice(-CURRENT_LABEL_LIMIT).join("")}`;
+}
+
+
 function checkChoices(choices, isValid, what) {
     if (!Array.isArray(choices) || choices.length === 0) {
         throw new TypeError(`${what} needs a non-empty array of choices`);
@@ -803,7 +821,8 @@ export class FileWidget extends Widget {
         for (const label of this._current) {
             const item = document.createElement("span");
             item.className = "pth-file-current-label";
-            item.textContent = this.currentLabel.replace("{value}", label);
+            item.textContent = withValue(
+                this.currentLabel, compactReference(label));
             this.current.append(item);
         }
 

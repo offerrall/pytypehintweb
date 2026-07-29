@@ -2,6 +2,31 @@
 
 
 
+## [0.0.4] - 2026-07-28
+
+The current-file label is compacted now. A planted reference is whatever the host
+already holds — a local server path, a stored name, a URL — and the widget used to
+print it whole, so a deep `UPLOADS_DIR` path or a long URL spilled across the
+field and put the server's directory layout on screen. It shows the name after the
+last `/` or `\`, and when even that is long, a `…` followed by its last 32
+characters. A name that already fits is untouched.
+
+The cut is by characters, not by UTF-16 units, so a name of astral symbols is
+never split mid pair, and it happens at render time only: `value()`, `read()` and
+`uploads()` carry the reference exactly as it arrived, the extension filter still
+sees the whole string, and replacing the current file with a local pick behaves as
+it always did. Nothing about it is configurable and nothing new travels in the
+plan — the shortened text exists only inside the label element, written with
+`textContent`, and the full reference is not mirrored into a `title`, which would
+have put it back on screen on hover.
+
+This is presentation for **every** file field, not for images. The layer has no
+notion of an image: one `FileWidget` serves a `.png` and a `.pdf` alike, and the
+plan carries extensions, not types. Compacting only some of them would have meant
+inventing a category here to decide how a label reads, which is the wrong place
+for it — the problem was never the kind of file, it was the length of the string.
+
+
 ## [0.0.3] - 2026-07-27
 
 A file field can carry a default now, and it means what `FileWidget.setValue()`

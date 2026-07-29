@@ -497,7 +497,10 @@ references. An *existing* reference is what the host already holds and plants wi
 `read()`, its own store. The widget shows it declared as such — "`Current file:
 …`" with a **Replace** button, not editable and with the choose control hidden —
 and `value()`/`read()` transport it **verbatim**, so a struct with a file path
-survives an edit form untouched. The reference must clear the same extension
+survives an edit form untouched. What that label shows is **compacted**: the
+name after the last `/` or `\`, and at most 32 trailing characters behind a `…`
+when even that is long, so a deep path or a URL does not spill across the field.
+It is presentation only — nothing else sees the shortened form. The reference must clear the same extension
 filter a minted one does — but **not** the size bounds: a reference names a file
 the browser never received, so there is no `.size` to weigh and none is invented
 or fetched. It is not "certified"; it is simply a value whose size is not

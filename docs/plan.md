@@ -856,7 +856,8 @@ Invariants:
   `null` on a single file node (`minFiles ≤ maxFiles` when present).
 - `invalidMessage` is plain status text with no placeholder, shown only when the
   browser lets through a file whose extension is not accepted, so no reference is
-  minted. `currentLabel` (one `{value}`, the existing reference) and
+  minted. `currentLabel` (one `{value}`, the existing reference, compacted to its
+  file name or to 32 trailing characters for display only) and
   `currentReplaceLabel` drive the current-file display `setValue()` opens;
   `currentRestoreLabel` labels the ↺ that undoes a replace, and
   `currentRemoveLabel` the ✕ on each chosen-file card.

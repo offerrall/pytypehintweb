@@ -199,8 +199,22 @@ try {
           kept.file() === null && kept.files().length === 0);
     check("a file default has nothing to upload", kept.uploads().length === 0);
     check("a file default shows on screen as the current file",
-          kept.el.textContent.includes("stored/report.pdf"));
+          kept.el.textContent.includes("report.pdf"));
     check("a defaulted file field is ready", kept.isReady());
+
+    // The label is compacted, the reference is not: what the user reads and
+    // what the host reads part ways here, and only here.
+    const long = by("weighedKept").widget;
+    long.setValue("https://example.com/uploads/very-long-reference/photo-123456789.pdf");
+    check("a long reference is shown compacted",
+          long.el.textContent.includes("photo-123456789.pdf")
+          && !long.el.textContent.includes("very-long-reference"));
+    check("a compacted label still reads whole",
+          long.value()
+          === "https://example.com/uploads/very-long-reference/photo-123456789.pdf");
+    check("a compacted label carries nothing to upload",
+          long.uploads().length === 0);
+    long.setValue("stored/opaque.pdf");
 
 
     // A file composes recursively: these four shapes used to be refused
@@ -296,8 +310,8 @@ try {
     check("a list default holds no local files",
           many.files().length === 0 && many.uploads().length === 0);
     check("a list default shows both current files",
-          many.el.textContent.includes("stored/one.pdf")
-          && many.el.textContent.includes("stored/two.pdf"));
+          many.el.textContent.includes("one.pdf")
+          && many.el.textContent.includes("two.pdf"));
     check("a list default keeps read() in order",
           JSON.stringify(form.read().keptMany)
           === JSON.stringify(["stored/one.pdf", "stored/two.pdf"]));
