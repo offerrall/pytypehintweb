@@ -242,10 +242,6 @@ export function asciiSlug(text) {
 }
 
 
-// crypto.randomUUID() only exists on a secure origin. A panel served over
-// plain http from a LAN address is not one, and there the call throws:
-// picking a file would then register nothing and the form would ask for a
-// file that looks attached. getRandomValues has no such restriction
 function randomHash() {
     const source = globalThis.crypto;
 

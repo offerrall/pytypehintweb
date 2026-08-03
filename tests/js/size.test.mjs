@@ -95,9 +95,18 @@ import { MODULES, measure } from "./size-report.mjs";
 // contract.js +354, defaults.js +154 and normalize.js +116) and gzip
 // 22_022 -> 22_589 (+567). inputs.js crossed the per-file ceiling by 813 bytes,
 // so that one moves too, keeping the same headroom it had.
-const RAW_CEILING = 123_000;
-const GZIP_CEILING = 23_400;
-const PER_FILE_RAW_CEILING = 47_600;
+// Nudged for the secure-context fallback in mintFileReference: a panel served
+// over plain http from a LAN address is not a secure context, so
+// crypto.randomUUID() is withheld there and the call threw inside the file
+// input's change handler — a chosen file registered nothing. randomHash() uses
+// randomUUID when it is there and builds the same version 4 shape out of
+// getRandomValues, which carries no such restriction, when it is not. Measured
+// with LF: raw 122_117 -> 122_653 (+536) and gzip 22_773 -> 22_970 (+197), all
+// of it inputs.js (raw 47_313 -> 47_849), which crossed the per-file ceiling.
+// The three ceilings move together, each keeping the headroom it had.
+const RAW_CEILING = 123_500;
+const GZIP_CEILING = 23_600;
+const PER_FILE_RAW_CEILING = 48_200;
 
 
 test("the runtime ships exactly the expected modules", () => {
