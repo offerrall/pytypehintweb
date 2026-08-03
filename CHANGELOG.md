@@ -2,6 +2,35 @@
 
 
 
+## [0.0.5] - 2026-08-03
+
+A file field works again on a page that is not served from `localhost`.
+`mintFileReference` reached straight for `crypto.randomUUID()`, and that method
+exists only in a secure context. A panel opened at `http://192.168.0.132` is not
+one, so the call threw a `TypeError` inside the change handler of the file input:
+nothing was ever recorded, `_files` stayed empty, and the form then asked for a
+file that the page appeared to be holding. The same page reached at `localhost`
+worked, because a browser grants that origin a secure context over plain http.
+
+What made it hard to see is that neither end was wrong. The bytes served were
+identical, the plan was identical, the backend accepted the upload over `curl`
+without complaint, and the only difference between a form that worked and one
+that did not was the address in the bar. The failure also read as the wrong kind
+of problem: an empty file field reports absence rather than an error, so the form
+said `Complete:` — a field left blank — and never `Fix:`.
+
+`randomUUID` is used when it is there and `getRandomValues` builds the same
+shape when it is not, which is the fallback this package already had in `sdk.js`
+and had not been given here. The identifier is a version 4 UUID either way, with
+the version and variant bits set by hand on the fallback path, so a reference
+minted on a LAN address is indistinguishable from one minted on localhost.
+
+This is not about how random the value has to be. A file reference only has to
+avoid colliding with the other references a space is holding, and
+`getRandomValues` is a cryptographic source in its own right; the point is that
+one of the two APIs is withheld outside a secure context and the other is not.
+
+
 ## [0.0.4] - 2026-07-28
 
 The current-file label is compacted now. A planted reference is whatever the host

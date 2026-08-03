@@ -242,9 +242,36 @@ export function asciiSlug(text) {
 }
 
 
+// crypto.randomUUID() only exists on a secure origin. A panel served over
+// plain http from a LAN address is not one, and there the call throws:
+// picking a file would then register nothing and the form would ask for a
+// file that looks attached. getRandomValues has no such restriction
+function randomHash() {
+    const source = globalThis.crypto;
+
+    if (typeof source?.randomUUID === "function") {
+        return source.randomUUID();
+    }
+
+    const bytes = source.getRandomValues(new Uint8Array(16));
+
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const text = [...bytes]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+
+    return [
+        text.slice(0, 8), text.slice(8, 12), text.slice(12, 16),
+        text.slice(16, 20), text.slice(20),
+    ].join("-");
+}
+
+
 export function mintFileReference(name, extension) {
     const slug = asciiSlug(name.slice(0, name.length - extension.length));
-    const hash = globalThis.crypto.randomUUID();
+    const hash = randomHash();
 
     return slug === ""
         ? `${hash}${extension}`
