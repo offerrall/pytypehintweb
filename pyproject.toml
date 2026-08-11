@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Beltran Offerrall"}]
 requires-python = ">=3.11"
-dependencies = ["pytypehint>=0.0.7"]
+dependencies = ["pytypehint==0.0.7"]
 keywords = ["forms", "type-hints", "dataclasses", "schema", "web", "html"]
 classifiers = [
     "Development Status :: 3 - Alpha",
