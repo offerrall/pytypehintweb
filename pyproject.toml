@@ -14,7 +14,7 @@ requires-python = ">=3.11"
 dependencies = ["pytypehint==1.0.0"]
 keywords = ["forms", "type-hints", "dataclasses", "schema", "web", "html"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",

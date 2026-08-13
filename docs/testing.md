@@ -107,24 +107,33 @@ The suites are written around the failures that would otherwise be silent:
   `"3"` → `read()` → JSON → `decode()` → `build()` yields `3.0` with type `float`;
 - a non-finite float — a magnitude that overflows to `Infinity` — reads as
   `null` and is never transported, the float analogue of the unsafe integer;
-- `decode()` prepares without validating: it coerces `int → float` only where a
-  `Float` shape is the single reading, never mutates its input, and leaves an
-  invalid value untouched for the core to reject;
+- `decode()` prepares without validating: an `int` is restored to a `float` only
+  where a `Float` shape is the single reading and only where a float equals it
+  exactly (`2**53 + 1` travels as it came), the input is never mutated and the
+  result shares no container with it, and an invalid value is left untouched for
+  the core to reject. That `decode()` never raises on a value of its own accord
+  is pinned on its own — an integer of four hundred digits in a float field comes
+  back whole — and so is the delegation behind all of it: the helpers the old
+  walker was made of are asserted absent from the module, and `decode.py` is
+  asserted to name neither `fromisoformat` nor any shape whose portable spelling
+  the core restores;
 - a `float` slider is refused at plan generation, because `min + k*step` has no
   exact float arithmetic;
 - an ISO string picked in the browser becomes a built `date`/`time`: the star
   round trip `read()` → JSON → `decode()` → `build()` yields the exact Python
   object, and a date exclusive bound is emitted converted by ±1 day while a time
   bound keeps its flag;
-- `decode()` never interprets a string by its content: it converts to `date`/
-  `time` only where the shape (or an explicit `$type`) says so, so a `str` field
-  or branch carrying `"2026-07-22"` stays a string;
+- `decode()` never interprets a string by its content: it reads a `date`/`time`
+  only where the shape (or an explicit `$type`) says so, and only from the
+  canonical spelling, so a `str` field or branch carrying `"2026-07-22"` stays a
+  string while `"20260722"` and `"2026-W30-3"` stay strings in a `date` field and
+  `"2020"` stays one in a `time` field;
 - an enum member name picked in the browser becomes the exact built member: the
-  star round trip `read()` → JSON → `decode()` → `build()` yields the member via
-  `cls[name]` with type the enum class; an alias name resolves to its canonical
-  member, an unknown name is left for the core, and two enums sharing a class
-  name in a union are rejected by the core at compile time (the class name is the
-  wrapper discriminator);
+  star round trip `read()` → JSON → `decode()` → `build()` yields the member with
+  type the enum class; an alias name resolves to its canonical member (the lookup
+  reads through `__members__`), an unknown name is left for the core, and two
+  enums sharing a class name in a union are rejected by the core at compile time
+  (the class name is the wrapper discriminator);
 - only a local choice makes a new file reference (the file's name slugged to bare
   ASCII, a UUID and the file's extension, the UUID carrying the uniqueness on its
   own) — one per file, `list[File]` minting an array through one `multiple`
@@ -165,6 +174,13 @@ The suites are written around the failures that would otherwise be silent:
 - date and time bounds compare lexicographically over the canonical ISO form,
   and the core's rejection of the string-group wrapper is pinned, so `decode()`
   is proven to be the only thing that can unwrap it;
+- a wrapper is unwrapped only when its payload read as the branch it names: a
+  `{"$type": "date"}` over a string that is not a date, or over a spelling that
+  is canonical but not a real calendar day, survives to `build()` instead of
+  settling as the `str` beside it — which is also what keeps a reference from
+  reaching a file field behind the resolver's back — while a malformed wrapper
+  (an extra key, a missing `$value`, a `$type` naming no branch, a wrapper on a
+  path that is not a union) travels whole in every position;
 - `read()` stays callable and honest while the form is incomplete;
 - string lengths count code points, so `"😀"` is one character; a pattern the
   validator accepts constructs as a JavaScript Unicode `RegExp`, and one the two

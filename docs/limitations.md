@@ -1,7 +1,9 @@
 # Current limitations
 
 Everything a schema carries that the browser cannot represent faithfully
-makes `plan_of()` raise `TypeError`. Nothing is degraded silently, so the
+makes `plan_of()` raise `TypeError` — with one exception,
+[a recursive shape](#recursive-shapes), which meets the interpreter's stack
+limit before any check of ours can name it. Nothing is degraded silently, so the
 limitations below are visible at plan-generation time rather than at render
 time.
 
@@ -41,16 +43,81 @@ with no special rule needed.
 
 The transport cannot express every type the core validates by exact type, so
 [`decode()`](python.md#decode) prepares a JSON-parsed object before
-`schema.build()`. **Today it prepares three things: `int → float` where the
-shape is `Float`, an ISO string → `date`/`time` where the shape is `Date`/`Time`
-(via `fromisoformat`), and a member name → enum member where the shape is
-`EnumShape` (via `cls[name]`).** It converts only where the shape at the path (or
-an explicit `$type` in a union) fixes the reading, never by inspecting a
-value's content — a `str` that looks like a date, or matches a member name,
-stays a `str`. It is the
-reverse-pipeline counterpart of `plan_of()` and will grow as new types arrive;
-everything it does not recognise passes through unchanged for `build()` to
-judge.
+`schema.build()`. **What it prepares is not this package's to decide.** The
+portable representation — `int → float` where the shape is `Float`, ISO text →
+`date`/`time` where the shape is `Date`/`Time`, a member name → enum member
+where the shape is `EnumShape`, and the `$type`/`$value` wrapper that names an
+option the value alone cannot — is restored by `schema.decode()` in the core,
+and the web layer adds exactly one thing to it: the file references, resolved
+through `file_resolver`. So the scope of the reading is the core's scope, and it
+widens when the core's does rather than when this package decides it should. The
+limit that does belong here is the file one: nothing resolves a reference unless
+a host supplies the callable, because neither library knows what storage means.
+
+The reading is made only where the shape at the path (or an explicit `$type` in
+a union) fixes it, never by inspecting a value's content — a `str` that looks
+like a date, or matches a member name, stays a `str`. Everything the schema
+cannot name a reading for passes through unchanged for `build()` to judge, and
+three consequences of that are worth stating as limits rather than left to be
+discovered:
+
+- **A date or a time is read in its canonical spelling only** — `YYYY-MM-DD`,
+  and `HH:MM` with optional seconds, fraction and offset. `fromisoformat()`
+  accepts far more, and the two grammars overlap (`"20200101"` reads as a date
+  *and* as a time), so letting it decide would let the text of a value select an
+  option. A producer that spells one of them some other way gets its string back
+  and a `build()` error, not a silent reading.
+- **An integer becomes a float only when a float equals it exactly.** `2**53 + 1`
+  travels as it came, and so does an integer too large to convert at all:
+  restoring the neighbouring float would hand `build()` a number the transport
+  never carried, and `build()` would take it.
+- **A wrapper whose payload did not read as the branch it names survives.** The
+  transport said `date` and the value is not one, so nothing files it under the
+  `str` beside it; the dict reaches `build()` whole and is reported there. This
+  is also what keeps a file reference from reaching a `FileHint` field without
+  passing through `file_resolver`.
+
+One property of `decode()` is a guarantee rather than a limit, and it is worth
+recording beside them: it **never raises on a value**, whatever that value's
+type, size or spelling. Every refusal of a value is `build()`'s.
+
+## Recursive shapes
+
+A dataclass that refers to its own type — directly, or through another dataclass
+that leads back to it — **compiles in the core** and is describable there: the
+core's portable contract writes each dataclass once into a definition table and
+lets a field point at it, so `to_dict()` represents the cycle as a reference and
+terminates.
+
+A plan is not that format. It is **fully expanded**: every node carries its own
+options, messages and defaults written out in place, with nothing to point at
+and no table to point into, because the browser reads a plan top to bottom and
+resolves no references. A shape that contains itself has no expanded form — the
+expansion does not terminate — so `plan_of()` cannot produce one:
+
+```python
+@dataclass
+class Node:
+    name: str
+    child: "Node | None" = None
+
+
+struct_of(Node)             # compiles
+struct_of(Node).to_dict()   # the child field carries a reference back to Node
+plan_of(Node)               # RecursionError
+```
+
+This is the one limit on this page that does not arrive as a `TypeError` naming
+the offending path. The recursion is caught by the interpreter's stack limit
+rather than by a check that knows what it is looking at, so what surfaces is a
+bare `RecursionError` with no field coordinates in it. Finding the cycle before
+descending into it is a check that has not been written; a recursive form has no
+representation waiting behind it either way, so what is missing is the
+diagnosis, not the feature.
+
+A form over a recursive structure needs a shape with a bound: a fixed depth
+spelled out as distinct dataclasses, or a flat `list` of nodes carrying a parent
+key. Both are representable and both expand.
 
 ## Regular expressions
 
@@ -248,8 +315,8 @@ transport object once it leaves the browser, remain the application's job.
 ## Distribution
 
 `pytypehintweb` is published on PyPI (`pip install pytypehintweb`); there is no
-npm package. It is early (alpha) and not meant for production deployment yet.
-Hosting, deployment and CI belong to the host application, not to the library.
+npm package. Hosting, deployment and CI belong to the host application, not to
+the library.
 
 The browser modules live inside the Python package, under
 `pytypehintweb.STATIC`, and are meant to be served or copied as plain static
@@ -295,6 +362,7 @@ demonstrate; the bundled demo is the practical way to check a target browser.
 
 ## Plan contract stability
 
-The plan contract is public and tested but pre-1.0: breaking changes may occur
-before 1.0. See the [plan contract](plan.md#compatibility) for the version
-policy (a mandatory `v`, currently `1`) and the single-representation guarantee.
+The plan contract is public and tested. A breaking change to it increments `v`
+and belongs to a major release; `v: 1` has one fixed meaning and keeps it. See
+the [plan contract](plan.md#compatibility) for the version policy (a mandatory
+`v`, currently `1`) and the single-representation guarantee.

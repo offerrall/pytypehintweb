@@ -14,6 +14,11 @@ def _sig(fn):
     return signature_of(fn)
 
 
+class Estado(Enum):
+    A = "a"
+    B = "b"
+
+
 def test_int_is_coerced_to_float_at_the_root():
     def f(value: float) -> None: ...
 
@@ -249,15 +254,20 @@ def test_a_date_list_decode_does_not_mutate_the_input():
     assert type(data["value"][0]) is str
 
 
-def test_the_core_rejects_the_string_group_wrapper_directly():
-    # Pin the core's behaviour: it routes str/date by exact Python type and has
-    # no wrapper for them, so a raw wrapper is rejected. decode must unwrap it.
+def test_the_string_group_wrapper_is_consumed_before_build_sees_it():
+    # build() routes str/date by exact Python type and has no wrapper for them,
+    # so a raw wrapper handed straight to it is rejected. Consuming it is
+    # decode's work, and the core's decode is what does it.
     def f(value: str | date) -> None: ...
 
     schema = _sig(f)
+    wrapper = {"value": {"$type": "date", "$value": "2026-07-22"}}
 
     with pytest.raises(Exception):
-        schema.build({"value": {"$type": "date", "$value": "2026-07-22"}})
+        schema.build(wrapper)
+
+    assert decode(schema, wrapper) == {"value": date(2026, 7, 22)}
+    assert schema.build(decode(schema, wrapper)) == {"value": date(2026, 7, 22)}
 
 
 def test_the_star_round_trip_builds_a_date_from_a_picked_value(node, tmp_path):
@@ -329,18 +339,23 @@ def test_a_wrapper_missing_its_type_travels_intact():
     assert decode(_wrapped_sig(), {"value": payload}) == {"value": payload}
 
 
-def test_an_explicit_null_payload_is_distinct_from_an_absent_one():
+def test_a_payload_that_never_reached_its_branch_keeps_the_wrapper():
     schema = _wrapped_sig()
 
-    # $value present and null is a payload the branch reads: the wrapper is
-    # consumed and the null travels on.
-    assert decode(schema, {"value": {"$type": "float", "$value": None}}) == {
-        "value": None}
+    # The wrapper names an option; it is not itself data. A null is not a float,
+    # so consuming the wrapper here would file the null under a branch it never
+    # reached, in silence. It survives instead and build() reports the dict.
+    null_payload = {"$type": "float", "$value": None}
+    assert decode(schema, {"value": null_payload}) == {"value": null_payload}
 
     # $value absent is not a wrapper at all, so the dict stays whole. Reading it
     # with .get() would have collapsed both cases to the same None.
     absent = {"$type": "float"}
     assert decode(schema, {"value": absent}) == {"value": absent}
+
+    for payload in (null_payload, absent):
+        with pytest.raises(Exception):
+            schema.build(decode(schema, {"value": payload}))
 
 
 def test_a_wrapper_with_an_unknown_discriminator_travels_intact():
@@ -436,3 +451,103 @@ def test_a_malformed_wrapper_does_not_mutate_the_input():
     assert type(data["value"][0]["$value"]) is int
     # decode still promises a fresh top-level dict.
     assert result is not data
+
+
+# --- the portable reading belongs to the core --------------------------------
+#
+# decode() no longer carries a reader of its own: schema.decode() restores the
+# portable representation and pytypehintweb adds only the file resolution the
+# core deliberately has no opinion about. These pin the behaviour that reading
+# gives us, all of which the walker this module used to carry got wrong.
+
+def test_decode_never_raises_on_a_value_of_its_own_accord():
+    def f(value: float) -> None: ...
+
+    schema = _sig(f)
+
+    # A JSON document may spell an integer too large for any float. Converting
+    # it is not decode's call to make: it hands the value on and build() reports
+    # it. The walker that lived here raised OverflowError out of float().
+    huge = 10 ** 400
+    assert decode(schema, {"value": huge}) == {"value": huge}
+
+    with pytest.raises(Exception):
+        schema.build(decode(schema, {"value": huge}))
+
+
+def test_an_integer_no_float_equals_is_not_restored():
+    def f(value: float) -> None: ...
+
+    schema = _sig(f)
+
+    # Above 2**53 the floats thin out, so float(2**53 + 1) answers with a
+    # neighbour. Restoring that would hand build() a number the transport never
+    # carried, so the integer stands and build() reports the type.
+    odd = 2 ** 53 + 1
+    assert decode(schema, {"value": odd}) == {"value": odd}
+    assert type(decode(schema, {"value": odd})["value"]) is int
+
+
+def test_only_the_canonical_spelling_of_a_date_is_read():
+    def f(value: date) -> None: ...
+
+    schema = _sig(f)
+
+    assert decode(schema, {"value": "2026-07-22"}) == {"value": date(2026, 7, 22)}
+
+    # date.fromisoformat() accepts far more than the canonical spelling, and its
+    # grammar overlaps time's. Letting it decide would make the text of a value
+    # select an option, so these stand as the strings they arrived as.
+    for spelling in ("20260722", "2026-W30-3"):
+        assert decode(schema, {"value": spelling}) == {"value": spelling}
+
+
+def test_only_the_canonical_spelling_of_a_time_is_read():
+    def f(value: time) -> None: ...
+
+    schema = _sig(f)
+
+    assert decode(schema, {"value": "14:30:05"}) == {"value": time(14, 30, 5)}
+    # "2020" is a year, not twenty past eight in the evening.
+    assert decode(schema, {"value": "2020"}) == {"value": "2020"}
+
+
+@pytest.mark.parametrize("hint, payload", [
+    # A date that never parsed, and a canonical spelling naming an unreal day.
+    # Both collide with str on the portable spelling, so the wrapper is the one
+    # the browser really emits here — this is the union the rule is about.
+    (str | date, {"$type": "date", "$value": "not-a-date"}),
+    (str | date, {"$type": "date", "$value": "2026-02-31"}),
+    # A time whose branch it never reached, beside a date that spells alike.
+    (date | time, {"$type": "time", "$value": "not-a-time"}),
+    # An enum name no member answers to, beside the str it competes with.
+    (str | Estado, {"$type": "Estado", "$value": "ZZZ"}),
+])
+def test_a_wrapper_is_not_filed_under_the_branch_beside_the_one_it_names(
+        hint, payload):
+    def f(value: hint) -> None: ...
+
+    schema = signature_of(f)
+
+    # Consuming a wrapper whose payload never read as the option it names would
+    # settle a failed date as the str beside it, in silence. The wrapper stays
+    # and build() reports it.
+    assert decode(schema, {"value": payload}) == {"value": payload}
+
+    with pytest.raises(Exception):
+        schema.build(decode(schema, {"value": payload}))
+
+
+def test_an_unrouted_subtree_is_copied_rather_than_shared():
+    def f(value: int) -> None: ...
+
+    data = {"value": 1, "unknown": {"nested": [1, 2]}}
+    result = decode(_sig(f), data)
+
+    # An unknown key travels intact, but the tree decode returns is its own:
+    # mutating the result must not reach back into the caller's document.
+    assert result["unknown"] == data["unknown"]
+    assert result["unknown"] is not data["unknown"]
+
+    result["unknown"]["nested"].append(3)
+    assert data["unknown"]["nested"] == [1, 2]

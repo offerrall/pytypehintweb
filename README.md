@@ -1,4 +1,4 @@
-# pytypehintweb 1.0.0
+# pytypehintweb 1.1.0
 
 [![PyPI version](https://img.shields.io/pypi/v/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)
 [![Python](https://img.shields.io/pypi/pyversions/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)
@@ -16,8 +16,10 @@ authentication, submission, function execution — belongs to the host
 application. (For the whole request/response cycle instead of the rendering
 layer, see [FuncToWeb](https://github.com/offerrall/FuncToWeb).)
 
-Pre-1.0: the API is still settling, so breaking changes are expected between
-releases.
+The public API — `plan_of()`, `decode()`, `WebConfig`, `STATIC` and the plan's
+own `v: 1` contract — is settled, and a breaking change to any of them belongs
+to a major release. Internals carry no such promise: 1.1.0 replaced most of
+`decode()` with a call into the core, and that kind of change is expected.
 
 ## Features
 

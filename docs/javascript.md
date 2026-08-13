@@ -389,7 +389,9 @@ float analogue of the unsafe integer. A bound is compared directly against the
 double with its exclusivity flag, exactly as the core does — there is no ±1
 conversion. `value()` and `read()` return a plain JavaScript number, `3`
 included (every JS number is a double); turning that `3` back into the `float`
-the core wants is [`decode()`](python.md#decode)'s job, not the widget's.
+the core wants happens on the way back in, where
+[`decode()`](python.md#decode) hands the transport object to the core's own
+`schema.decode()` — not in the widget, and not in the web layer either.
 
 A live user value and a plan `default` are held to different standards. A value
 the user types may stay representable while breaking a constraint, and the
@@ -555,9 +557,10 @@ control asks for its seconds field (`step=1`). Where a platform ignores that ask
 and reports whole minutes — iOS, whose wheel picker has no seconds — `TimeWidget`
 reads a well-formed, in-range `HH:MM` as `HH:MM:00`, so the value it returns is
 always canonical. It completes nothing else, never rewrites the control's own
-text, and `setValue()` still requires the full `HH:MM:SS`. Turning the ISO string
-back into a `date`/`time` object is [`decode()`](python.md#decode)'s job, not the
-widget's.
+text, and `setValue()` still requires the full `HH:MM:SS`. The ISO string is the
+core's own portable spelling of a `date`/`time`, and turning it back into an
+object is that core's reading, reached through
+[`decode()`](python.md#decode) — never the widget's.
 
 A `StrWidget` whose `pattern` is exactly `COLOR_PATTERN` (exported from
 `inputs.js`, the `#[0-9a-fA-F]{6}` string the `Color` alias emits) mounts a

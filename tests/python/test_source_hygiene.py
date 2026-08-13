@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -176,3 +177,63 @@ def test_getting_started_uses_form_onchange():
 
     assert "form.onChange(refresh)" in text
     assert "field.widget.onChange(refresh)" not in text
+
+
+# The portable representation has one reader, and it is the core's. decode()
+# delegates to schema.decode() and adds only the file resolution the core has
+# no opinion about, so a second reader growing back here would be two answers
+# to "what does this value mean" — the divergence 1.1.0 removed. These name the
+# machinery of that reader rather than leaving it to be re-derived.
+
+def adapter_sources():
+    for name in ("decode.py", "plan.py", "types.py", "__init__.py"):
+        yield ROOT / "src" / "pytypehintweb" / name
+
+
+PORTABLE_READING = ("fromisoformat", "timespec")
+
+
+def test_the_adapter_does_not_read_the_portable_spelling_itself():
+    # Restoring a date or a time from its text is the core's reading, pinned
+    # there to a canonical spelling. A second one here would accept spellings
+    # the core declines, and the value's text would start selecting an option.
+    offenders = [
+        f"{path.relative_to(ROOT)}: {token}"
+        for path in adapter_sources()
+        for token in PORTABLE_READING
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_decode_grows_no_reader_of_its_own():
+    # The module, not the function `pytypehintweb.decode` re-exports: asking a
+    # function for these attributes answers no whatever the module holds, and
+    # the assertion would pass with the whole walker back in place.
+    decode_module = importlib.import_module("pytypehintweb.decode")
+
+    # The helpers the old walker was made of. Naming them is cheaper than
+    # describing the shape of the thing that must not come back. _transport_type
+    # is deliberately absent: it groups options by the type they arrive as,
+    # which is transport routing and not a reading of a value.
+    gone = ("_to_date", "_to_time", "_to_enum_member", "_decode_scalar",
+            "_decode_string", "_decode_list", "_decode_options",
+            "_decode_wrapped", "_decode_struct", "_decode_inline_struct")
+
+    assert [name for name in gone if hasattr(decode_module, name)] == []
+
+
+def test_decode_imports_no_shape_the_core_reads_for_it():
+    text = (ROOT / "src" / "pytypehintweb" / "decode.py").read_text(
+        encoding="utf-8")
+
+    imported = {name.strip()
+                for line in text.splitlines() if line.startswith("from pytypehint ")
+                for name in line.split("import", 1)[1].split(",")}
+
+    # Date, Time, Float, Int and EnumShape are exactly the shapes whose portable
+    # spelling the core restores. Importing one here means something in this
+    # module is deciding what such a value means. Matched against the import
+    # list rather than the whole text, so an ordinary word cannot trip it.
+    assert imported.isdisjoint({"Date", "Time", "Float", "Int", "EnumShape"})

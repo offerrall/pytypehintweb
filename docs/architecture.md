@@ -11,9 +11,9 @@ and function execution belong to the host application. The bundled
 ## Layers
 
 ```text
-pytypehint          compiles types, validates, builds objects
+pytypehint          compiles types, decodes the portable form, validates, builds
 plan.py             Python adapter: schema -> expanded plan
-decode.py           Python adapter: transport -> build input (int->float, ISO->date/time)
+decode.py           Python adapter: schema.decode() plus file-reference resolution
 static/defaults.js  official runtime defaults and known property names
 static/slider.js    shared, dependency-free slider position arithmetic
 static/normalize.js structural validation and normalization
@@ -35,16 +35,21 @@ a dependency-free leaf whose position arithmetic (`firstSliderValue`,
 forward:  function/dataclass -> pytypehint schema -> plan_of() -> expanded plan
           -> normalize/check -> compileForm() -> widgets
 reverse:  widgets -> form.read() -> transport object -> (host carries it)
-          -> decode() -> schema.build() or another consumer
+          -> decode() = schema.decode() + file references
+          -> schema.build() or another consumer
 ```
 
 `decode()` is the reverse-pipeline counterpart of `plan_of()`: the forward path
 turns a schema into a plan, and the reverse path turns the transport object back
-into something `schema.build()` accepts by exact type. It is a preparation step,
-not validation — it converts only what the wire could not carry faithfully
-(today, an `int` where the shape is `Float`, and an ISO string where it is
-`Date`/`Time`), guided by the shape and never by a value's content, and leaves
-the core to reject anything wrong.
+into something `schema.build()` accepts by exact type. It does not read the
+portable representation itself — `schema.decode()` does, because that
+representation is the core's. The `int` where the shape is `Float`, the ISO
+string where it is `Date`/`Time`, the member name where it is an enum and the
+`$type`/`$value` wrapper are all restored there, by the shape and never by a
+value's content, and anything wrong is left for the core to reject. What
+`decode()` adds on top is the one reading the core has no opinion about: when a
+`file_resolver` is given it walks the already decoded tree and hands every file
+reference to it. Storage is not a type question, so it cannot be the core's.
 
 `value()` belongs to the components (the plain value they represent); `read()`
 belongs to the orchestration (the transport shape a consumer expects, wrapping
@@ -54,12 +59,25 @@ union branches). A widget never decides whether its value travels `plain`,
 ## Source of truth
 
 `pytypehint` is the source of truth for types, constraints, defaults, unions,
-construction and final validation. `plan.py` is the only adapter: it translates
-a compiled schema into the flat, serializable [plan contract](plan.md), and when
-a guarantee the core makes cannot be preserved in the browser it raises
-`TypeError` — no rule is ever degraded silently. The browser may anticipate
+the portable representation of a value, construction and final validation.
+`plan.py` is the only adapter of that contract: it translates a compiled schema
+into the flat, serializable [plan contract](plan.md), and when a guarantee the
+core makes cannot be preserved in the browser it raises `TypeError` — no rule is
+ever degraded silently. The browser may anticipate
 errors to improve the experience, but it does not replace the core's validation
 and is not a second source of truth.
+
+That extends to the wire. The `$type`/`$value` wrapper, and the branch names
+inside it, are not this library's invention: they are the same portable value
+format the core writes in `to_dict()` and reads back in `schema.decode()`, named
+by the core's own `option_id()`. `plan.py` still computes each branch's `plain` /
+`inline` / `wrapped` mode, because the core does not publish that rule as public
+API; what it computes is the same reading the core applies when it decodes. That
+agreement is pinned end to end rather than branch by branch: the round-trip tests
+drive a real browser transport object through `decode()` into `schema.build()`,
+so a mode that stopped matching the core's reading would fail there. So the
+transport is one format with one reader, not a web dialect someone has to
+translate back.
 
 That is why Python vocabulary stops at `plan.py`: `Shape`, `Struct`,
 `option_id`, `MISSING` and the `$type` rules never surface in the widget API.
@@ -116,13 +134,32 @@ invariants that cannot affect runtime integrity (e.g. ordinary-range
 
 ### Who owns which rule
 
+Three layers, and the line between them is the same one everywhere:
+
+```text
+pytypehint      the typed contract: schema semantics, the portable
+                representation, reading it back into exact Python
+                (decode), resolve, build
+pytypehintweb   the contract adapted to a browser: the web plan, what
+                JavaScript and the page restrict, the widgets, the web
+                transport, and the resolution of file references
+the host        storage itself: existence, authorization, lifecycle, and
+                the authoritative size of bytes it owns
+```
+
+Each layer owns what only it can answer. The core cannot know that a `2⁵⁴`
+integer stops being an integer in JavaScript; the adapter cannot know whether a
+reference still names bytes; the host cannot be asked what a `Float` means. The
+table below is that split in detail.
+
 | Layer | Owns |
 | --- | --- |
-| `pytypehint` | core schema validity: positive `Rows` and `Step`, non-empty and non-repeating `Choices`, non-empty ranges, ordinary and slider ranges that admit a valid multiple of `MultipleOf`, choices consistent with their constraints, unions without repeated option types or homonym discriminators (dataclasses or enums that would share a `$type` name) |
+| `pytypehint` | core schema validity: positive `Rows` and `Step`, non-empty and non-repeating `Choices`, non-empty ranges, ordinary and slider ranges that admit a valid multiple of `MultipleOf`, choices consistent with their constraints, unions without repeated option types or homonym discriminators (dataclasses or enums that would share a `$type` name) — and the portable representation of a value in both directions: what `to_dict()` writes, and what `schema.decode()` reads back into exact Python (the `int` under a `Float`, the ISO text under a `Date`/`Time`, the name under an enum, the `$type`/`$value` wrapper) |
 | `plan_of()` | web representability and the exact converted browser contract it emits: every value a JavaScript safe integer, portable patterns, control combinations that ask for different widgets, unique branch option ids (defense in depth — the core compiler rejects that collision on every path it compiles, a field's union and a list's items alike, so this one only ever fires on a shape assembled by hand), nested objects with at least one field, exclusive integer bounds that still leave a value after integer conversion, sliders with both converted limits, sliders with a reachable valid position, converted defaults valid against their node including the slider `Step` grid |
 | `normalizePlan()` | structural validity: every non-conditional property present (a missing one is `<path>: is required`), no unknown keys, types of values, the `hasDefault` / `default` pair, canonical scalar forms (a date value is a real calendar date, not merely the `YYYY-MM-DD` shape), and the structural shape invariants — non-empty field names, `optional` nodes only in list-item position, and `optional` / `enabled` field coherence |
 | `checkPlan()` | everything a hand-written expanded plan needs to be buildable — structure, network boundary, and the semantics of the normalized document: coherent ranges, choices against their constraints, reachable slider positions, unique and non-empty field names within each scope, `inline` transport only on object branches, `optional` nodes only as list items, unique branch values, and every plan default validated against the full constraints of its node. It does **not** restate schema-compiler invariants that cannot affect runtime integrity (e.g. ordinary-range `multipleOf` reachability) |
-| `schema.build()` | the values actually submitted |
+| `decode()` | nothing about types: it hands the transport object to `schema.decode()` and adds only the reading the core has no opinion about — every file reference goes to the host's `file_resolver`, wherever a file node sits in the decoded tree |
+| `schema.decode()` and `schema.build()` | the portable form as it arrives, and the values actually submitted |
 | the host application | everything about stored bytes: where an upload went, whether a reference still stands for something, whether it has expired, whether it is this caller's to redeem, and any byte-size guarantee that has to hold authoritatively. `decode(..., file_resolver=...)` is the seam, and an exception raised there propagates unchanged |
 
 The adapter does not restate the core's schema semantics for their own sake; it

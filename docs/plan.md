@@ -759,8 +759,9 @@ a value.
 ```
 
 A member travels as its **name** (`.name`), a JSON string, never its value: a
-value can be anything, repeat across aliases, or not serialize. `decode()`
-rebuilds it with `cls[name]`, and the core validates the exact member by type.
+value can be anything, repeat across aliases, or not serialize. The name is the
+core's own portable spelling of a member: `schema.decode()` rebuilds it with
+`cls[name]`, and the core then validates the exact member by type.
 
 Invariants:
 
@@ -1265,15 +1266,19 @@ with `$type` (`"int"`/`"float"`, or `"str"`/`"date"`/`"time"` — the core's
 ```
 
 `str | int` is unaffected: a string and a number are distinct JSON types, so
-those branches stay `plain`. The wrapper a colliding group produces is the
-adapter's wire format, not the core's — the core routes these options by exact
-Python type and expects bare values (a bare `str`, or a `date`/`time` object).
-[`decode()`](python.md#decode) consumes the wrapper on the way back in, turning
-`$type` into the real type distinction — coercing the `date`/`time` branch's ISO
-string into an object, keeping the `str` branch a string — before
-`schema.build()`. Crucially, it converts only by the shape at the path or by an
-explicit `$type`, **never by inspecting the string**: a `str` branch carrying
-`"2026-07-22"` stays a string.
+those branches stay `plain`. The wrapper a colliding group produces is **not** a
+web dialect: it is the core's own portable value format, the same one
+`Signature.to_dict()` / `Struct.to_dict()` write and `schema.decode()` reads,
+down to the `option_id()` names it puts in `$type`. `plan_of()` computes the mode
+per branch because the core does not publish that rule as public API, not because
+the two sides disagree about what the wrapper means.
+
+[`decode()`](python.md#decode) therefore consumes nothing itself: it hands the
+transport object to `schema.decode()`, which turns `$type` into the real type
+distinction — restoring the `date`/`time` branch's ISO string as an object,
+keeping the `str` branch a string — before `schema.build()`. The reading goes by
+the shape at the path or by an explicit `$type`, **never by inspecting the
+string**: a `str` branch carrying `"2026-07-22"` stays a string.
 
 The transport object is produced by `form.read()`, which is always callable:
 it does not throw because the form is incomplete, and while `isReady()` is
@@ -1422,9 +1427,9 @@ present exactly when `hasDefault` is true). There is one representation and one
 meaning per key, so no widget ever has to interpret an absence. The contract
 version is `v: 1`.
 
-The plan contract is public and tested, but the project is still pre-1.0. Breaking
-plan changes may occur before version 1.0; every one of them increments `v` (see
-[Version](#version)) and is documented in the release notes.
+The plan contract is public and tested. A breaking plan change increments `v`
+(see [Version](#version)), is documented in the release notes, and belongs to a
+major release; `v: 1` has one fixed meaning and keeps it.
 
 Every form plan carries a mandatory integer `v` (see [Version](#version));
 version `1` is the only one currently supported. A producer targeting this

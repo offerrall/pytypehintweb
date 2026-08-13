@@ -899,13 +899,15 @@ SECTIONS = [
      ]),
     ("float", "Floats",
      "A float is validated by exact type: the core rejects an int where a float "
-     "is expected. JSON cannot tell 3 from 3.0, so decode() prepares the "
-     "transport before build() — the int typed in the browser arrives as a "
-     "float.",
+     "is expected, and JSON cannot tell 3 from 3.0. \"Send to the core\" runs the "
+     "real pipeline: the transport object goes to pytypehintweb's decode(), which "
+     "hands it to the core's schema.decode() and then to schema.build(). The int "
+     "typed in the browser arrives as a float because the core reads back its own "
+     "portable representation, not because the web layer patched it.",
      [
          ("float-plain", "Plain float",
-          "No Label: the field name shows through. Type 3 and send it: decode "
-          "turns it into 3.0 before the core builds.",
+          "No Label: the field name shows through. Type 3 and send it: the core "
+          "reads 3.0 back from the transport before it builds.",
           float_plain, ()),
          ("float-labelled", "Label and Description",
           "The label is not the field name, and the description comes from the "
@@ -935,25 +937,25 @@ SECTIONS = [
           "Off sends null; on and empty is not ready.",
           opt_float, ()),
          ("float-list", "list[float]",
-          "Each row is an independent float. decode coerces every int in the "
-          "list.",
+          "Each row is an independent float. The core restores every int in the "
+          "list as a float.",
           list_float, ()),
          ("float-union", "int | float",
           "int and float share one JSON number, so both branches travel "
-          "wrapped with a $type. decode reads $type: the float branch coerces "
-          "$value, the int branch keeps it, and both unwrap to a bare value the "
-          "core routes by type.",
+          "wrapped with a $type — the core's own portable form. It reads $type: "
+          "the float branch restores $value as a float, the int branch keeps it, "
+          "and both unwrap to the bare value it routes by type.",
           union_int_float, ()),
      ]),
     ("date", "Dates",
-     "A date is a native picker whose value is ISO text (2026-07-22). The core "
-     "wants a date object, so decode() converts the string with "
-     "date.fromisoformat before build(). Bounds compare lexicographically over "
-     "the fixed-width ISO form.",
+     "A date is a native picker whose value is ISO text (2026-07-22). That text "
+     "is the core's own portable spelling of a date, so schema.decode() reads it "
+     "back into a date object before build(). Bounds compare lexicographically "
+     "over the fixed-width ISO form.",
      [
          ("date-plain", "Plain date",
-          "No Label: the field name shows through. Pick a day and send it; "
-          "decode turns the ISO string into a date.",
+          "No Label: the field name shows through. Pick a day and send it; the "
+          "core reads the ISO string back into a date.",
           date_plain, ()),
          ("date-labelled", "Label and Description",
           "The label is not the field name, and the description comes from the "
@@ -972,28 +974,28 @@ SECTIONS = [
           "exact ISO the plan carried.",
           date_choices, ()),
          ("date-default", "With a default",
-          "Opens on 2026-07-22. The default travels as an ISO string and "
-          "decode rebuilds the date.",
+          "Opens on 2026-07-22. The default travels as an ISO string and the "
+          "core rebuilds the date from it.",
           date_default, ()),
          ("date-optional", "date | None",
           "Off sends null; on and empty is not ready.",
           opt_date, ()),
          ("date-list", "list[date]",
-          "Each row is an independent date picker. decode converts every ISO "
-          "string in the list.",
+          "Each row is an independent date picker. The core reads every ISO "
+          "string in the list back into a date.",
           list_date, ()),
          ("date-union", "str | date",
           "On the wire both are JSON strings, so the branches collide and travel "
-          "wrapped with a $type. decode reads $type: the date branch converts "
-          "$value with fromisoformat, the str branch keeps it — it never guesses "
-          "from the content, so a str that looks like a date stays a str.",
+          "wrapped with a $type. The core reads $type: the date branch becomes a "
+          "date object, the str branch stays text. The reading is by $type, never "
+          "by the content, so a str that looks like a date stays a str.",
           union_str_date, ()),
      ]),
     ("time", "Times",
      "A time is a native picker (with seconds, step=1) whose value is ISO text "
-     "(14:30:00). decode() converts it with time.fromisoformat. Unlike a date, "
-     "a time bound keeps its exclusive flag — the core compares directly, with "
-     "no ±1 conversion.",
+     "(14:30:00), the core's portable spelling of a time, which schema.decode() "
+     "reads back into a time object. Unlike a date, a time bound keeps its "
+     "exclusive flag — the core compares directly, with no ±1 conversion.",
      [
          ("time-plain", "Plain time",
           "No Label: the field name shows through. The control shows seconds.",
@@ -1051,8 +1053,8 @@ SECTIONS = [
      ]),
     ("enum", "Enums",
      "An enum is a closed set of members, like a bool with more than two "
-     "options. Each member travels as its name (.name), never its value, and "
-     "decode() rebuilds the exact member the core validates by type.",
+     "options. Each member travels as its name (.name), never its value, and the "
+     "core rebuilds from that name the exact member it then validates by type.",
      [
          ("enum-plain", "Plain enum",
           "No Label: the field name shows through. A select over the member "
@@ -1075,13 +1077,13 @@ SECTIONS = [
           list_enum, (Estado,)),
          ("enum-union-str", "str | Estado",
           "On the wire both are JSON strings, so the branches collide and travel "
-          "wrapped with a $type. decode reads $type: the enum branch turns the "
-          "name into a member, the str branch keeps it — a str that matches a "
-          "member name stays a str.",
+          "wrapped with a $type. The core reads $type: the enum branch becomes a "
+          "member, the str branch stays text — a str that matches a member name "
+          "stays a str.",
           union_str_enum, (Estado,)),
          ("enum-union-two", "Estado | Prioridad",
           "Two enums in one union. They share the string transport, so each "
-          "branch carries its class name as $type and decode routes by it.",
+          "branch carries its class name as $type and the core routes by it.",
           union_two_enums, (Estado, Prioridad)),
      ]),
     ("file", "Files",
@@ -1121,9 +1123,11 @@ SECTIONS = [
          ("file-edit", "Editing a record",
           "Create and edit are the same form. This one opens prefilled with a "
           "record: the avatar is an existing reference, shown as \"Current file\" "
-          "and not re-uploaded. Change the name and send — build() returns the "
-          "Profile with the avatar intact. Press Replace to drop it and pick a new "
-          "one, or leave it empty to send null.",
+          "and not re-uploaded. Change the name and send — decode() resolves the "
+          "reference through this demo's file_resolver, the one reading the core "
+          "leaves to the host, and build() returns the Profile with the avatar "
+          "intact. Press Replace to drop it and pick a new one, or leave it empty "
+          "to send null.",
           Profile, ()),
          ("file-list-edit", "Editing a record with a list",
           "The same, with a list[File]. It opens prefilled with several existing "

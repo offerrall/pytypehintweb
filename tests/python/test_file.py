@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated
 
 import pytest
@@ -876,6 +877,106 @@ def test_decode_resolves_every_file_of_a_nested_list_in_order():
     assert seen == ["a.pdf", "b.pdf", "a.pdf"]   # once per reference, in order
     assert out == {"value": [["/resolved/a.pdf"],
                              ["/resolved/b.pdf", "/resolved/a.pdf"]]}
+
+
+def test_the_resolver_reaches_a_file_inside_a_wrapper_the_core_kept():
+    # Two lists share one Python type, so the core keeps the wrapper and the
+    # discriminator stays load-bearing. This is the only shape where the walk
+    # has to descend through $value, and nothing else exercises it.
+    def f(value: Annotated[list[Annotated[str, FileHint()]], Label("V")]
+          | Annotated[list[int], Label("V")]) -> None: ...
+
+    schema = signature_of(f)
+    payload = {"$type": "list[str]", "$value": ["a.pdf", "b.pdf"]}
+
+    seen, resolve = _recording_resolver()
+    out = decode(schema, {"value": payload}, file_resolver=resolve)
+
+    assert seen == ["a.pdf", "b.pdf"]
+    assert out == {"value": {"$type": "list[str]",
+                             "$value": ["/resolved/a.pdf", "/resolved/b.pdf"]}}
+
+    # The other branch holds no files, so the walk descends and resolves nothing.
+    seen_ints, resolve_ints = _recording_resolver()
+    ints = {"$type": "list[int]", "$value": [1, 2]}
+    out_ints = decode(schema, {"value": ints}, file_resolver=resolve_ints)
+
+    assert seen_ints == []
+    assert out_ints == {"value": ints}
+
+
+def test_the_resolver_reaches_the_file_branch_of_a_string_group_union():
+    # A file and a date collide on the portable spelling, so the browser wraps
+    # them. The core consumes the wrapper — str and date are different Python
+    # types — and the reference arrives bare, still the only str reading here.
+    def f(value: Annotated[str, FileHint()] | date) -> None: ...
+
+    schema = signature_of(f)
+
+    seen, resolve = _recording_resolver()
+    out = decode(schema, {"value": {"$type": "str", "$value": "a.pdf"}},
+                 file_resolver=resolve)
+
+    assert seen == ["a.pdf"]
+    assert out == {"value": "/resolved/a.pdf"}
+
+
+def test_a_wrapper_on_a_path_that_never_travels_wrapped_reaches_no_resolver():
+    # The resolver is the host's side effect: it moves an upload, redeems a
+    # one-shot token, reaches an object store. A dict shaped like a wrapper
+    # arrives from an untrusted client, and a lone file field is not a union,
+    # so nothing here ever travels wrapped and the walk must not descend into
+    # one — build() rejecting it afterwards is too late, the call already
+    # happened.
+    def f(value: Annotated[str, FileHint()]) -> None: ...
+
+    schema = signature_of(f)
+    payload = {"value": {"$type": "str", "$value": "secret.pdf"}}
+
+    seen, resolve = _recording_resolver()
+    out = decode(schema, payload, file_resolver=resolve)
+
+    assert seen == []
+    assert out == payload
+
+    with pytest.raises(Exception):
+        schema.build(out)
+
+
+def test_a_struct_wrapper_the_core_never_emits_reaches_no_resolver():
+    # A dataclass names itself inline, never inside $type/$value. A wrapper
+    # around one is a shape the core neither writes nor reads, so the walk
+    # declines it rather than trusting the discriminator it carries.
+    def f(doc: Annotated[Attachment, Label("D")]) -> None: ...
+
+    schema = signature_of(f)
+    payload = {"doc": {"$type": "Attachment",
+                       "$value": {"title": "t", "document": "secret.pdf"}}}
+
+    seen, resolve = _recording_resolver()
+    out = decode(schema, payload, file_resolver=resolve)
+
+    assert seen == []
+    assert out == payload
+
+
+def test_a_reference_never_reaches_the_host_through_the_wrong_branch():
+    # The hazard the core's wrapper rule prevents: a date that failed to parse
+    # must not settle as the file beside it. If it did, the value would land in
+    # a file field without the host ever having been asked about it.
+    def f(value: Annotated[str, FileHint()] | date) -> None: ...
+
+    schema = signature_of(f)
+
+    seen, resolve = _recording_resolver()
+    payload = {"$type": "date", "$value": "not-a-date"}
+    out = decode(schema, {"value": payload}, file_resolver=resolve)
+
+    assert seen == []
+    assert out == {"value": payload}
+
+    with pytest.raises(Exception):
+        schema.build(out)
 
 
 def test_a_list_of_structs_with_a_file_round_trips_through_build(tmp_path):

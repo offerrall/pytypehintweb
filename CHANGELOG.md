@@ -1,6 +1,78 @@
 # Changelog
 
 
+## [1.1.0] - 2026-08-13
+
+**`decode()` stopped carrying a reader of the portable representation and now
+asks the core for one.** Everything it used to restore by hand — the float a
+JSON writer flattened to an int, the date and time the wire carried as text, the
+enum member it carried as a name — is `schema.decode()`, which `pytypehint`
+1.0.0 published and which this package had been reimplementing beside it. So is
+the union routing: the `$type` / `$value` wrapper, its consumption where the
+exact value is enough on its own, and the inline `$type` of a dataclass union.
+
+The public API is unchanged. `decode(schema, data, *, file_resolver=None)` keeps
+its signature, its call shape and its refusal of anything that is not a compiled
+`Signature` or `Struct`; it is now annotated, so a caller running mypy no longer
+needs to exclude it from untyped-call checking. `plan_of()`, `WebConfig`,
+`STATIC`, `PLAIN` / `INLINE` / `WRAPPED`, `Color`, `Email` and the two patterns
+are untouched. The plan contract stays at `v: 1`, the wire format stays exactly
+as it was, and no JavaScript changed.
+
+What remains in `decode()` is the part the core deliberately does not own.
+`FileHint` describes a file; it does not stand for stored bytes, and the core
+opens nothing. So `file_resolver` is now a separate pass over the tree the core
+already decoded, and it knows one thing about a node: whether it is a file. It
+no longer decides what a date, a time, an enum member or a number means, because
+it no longer has any reason to know.
+
+`decode.py` went from 271 lines to 166 (140 to 77 excluding blanks and comments),
+from 18 helpers to 8, from 20 `type(x) is` tests to 12, and from importing 10
+names out of the core to 7 — `Date`, `Time`, `Float`, `Int` and `EnumShape` are
+gone from this package's decoding path, which is the point rather than the line
+count. Source-hygiene tests now name the helpers that must not grow back and
+assert the import list itself.
+
+**Five behaviours changed, and each one was the core being right where this
+package was wrong.** They are visible only to transport that was already
+malformed or already out of range:
+
+- A date or time is read only in its canonical spelling. `date.fromisoformat`
+  and `time.fromisoformat` accept far more than that and their grammars overlap
+  — `"20200101"` reads as a date *and* as a time, and `"2020"` read as 20:20 —
+  so the text of a value could select an option. It cannot now: a non-canonical
+  spelling travels intact and `build()` reports it.
+- An integer no float equals is no longer turned into one. Above 2\*\*53 the
+  floats thin out, so `float(2**53 + 1)` answers with a neighbour; restoring it
+  handed `build()` a number the transport never carried.
+- `decode()` no longer raises on a value of its own accord, which is what the
+  documentation always said it did. An integer too large to convert —
+  `10**400` in a `float` field — raised `OverflowError` out of `float()`.
+- A wrapper whose payload never read as the option it names survives instead of
+  being consumed. `{"$type": "date", "$value": "not-a-date"}` in a `str | date`
+  field used to be filed as the `str` beside it, in silence, and `build()`
+  accepted it. This also closed a hole in the file boundary: a reference could
+  land in a `FileHint` field without `file_resolver` ever being asked about it.
+- A subtree `decode()` cannot route is copied rather than shared with the
+  caller's document, which is what "the returned dict is always new" meant.
+
+`plan_of()` was **not** migrated to `schema.to_dict()`, and the reason is worth
+recording. The portable contract publishes everything a plan node needs except
+the one thing that would remove duplication: the transport mode of each branch.
+`plain` / `inline` / `wrapped` agree with the core's rule on every union tested,
+but the rule itself is not published, so consuming the document would leave that
+calculation exactly where it is and add a serialization step between two
+components that both already hold the compiled schema. Worse, `to_dict()` writes
+a union default in portable form, so the branch a default inhabits — decided
+today against real Python objects — would have to be inferred back out of
+flattened JSON. `plan.py` is unchanged in this release.
+
+The dependency is `pytypehint >= 1.0.0` again, with no upper bound, matching
+what the 1.0.0 entry below and the documentation have said all along; the exact
+pin introduced after that release contradicted them. The package no longer
+classifies itself as `Development Status :: 3 - Alpha`.
+
+
 ## [1.0.0] - 2026-08-13
 
 The core is now `pytypehint >= 1.0.0`, and the dependency has no upper bound.

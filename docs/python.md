@@ -550,13 +550,14 @@ rejected by the core, so an `enum` node always has at least one choice.
 A member travels as its **name** (`.name`), never its value: a value can be
 anything, repeat across aliases, or not serialize, while a name is a stable JSON
 string. An enum default travels as the member name, certified by the core, and
-`decode()` rebuilds the exact member with `cls[name]`.
+`decode()` restores the exact member — the lookup is the core's, on the enum
+class the shape carries.
 
 **Aliases.** When two members share a value (`A = 1; B = 1`), `B` is an alias of
 `A`: `list(cls)` yields only canonical members, so an alias name never appears in
-`choices`. If an external producer sends an alias name, `decode()` resolves it
-with `cls[name]` — which reads through `__members__` — to the canonical member,
-and `build()` accepts it (its type is the enum class).
+`choices`. If an external producer sends an alias name, the lookup reads through
+`__members__` and answers with the canonical member, so `decode()` returns the
+member the alias points at and `build()` accepts it (its type is the enum class).
 
 `Extra` on the core's enum is stored but **not interpreted** by the adapter; the
 `labels` slot on the node is where a future `Extra` vocabulary for visible member
@@ -655,18 +656,22 @@ accepts the value at all.
 ## `decode()`
 
 ```python
-decode(schema, data, *, file_resolver=None) -> dict
+decode(schema, data, *, file_resolver=None) -> Any
 ```
+
+The answer is a dict for the transport `decode()` is written for. The annotation
+is `Any` because it is not one for every input: `decode()` prepares and does not
+validate, so a `data` that is not a dict at all is handed back as it came, for
+`build()` to report rather than for this function to refuse.
 
 `decode()` is the reverse counterpart of `plan_of()`: where `plan_of()` turns a
 schema into a plan, `decode()` prepares a JSON-parsed transport object for the
 schema to build. It takes the compiled schema (a `Signature` or a `Struct`) and
 the raw dictionary that came out of the JSON parser, and returns a **new**
-dictionary — the input is never mutated. The new root, and any container it
-descends into to prepare a value, is freshly built; but a value it passes through
-untouched is returned by reference, not deep-copied, so an unconverted nested
-object or list may be shared with the input. The guarantee is no mutation and a
-fresh root, not a deep clone:
+dictionary — the input is never mutated, and nothing in the result is shared
+with it. Every container the answer holds is freshly built, a subtree nothing
+could route included: that one is copied rather than aliased, so writing into
+the result can never reach back into the caller's document.
 
 ```python
 from pytypehintweb import decode
@@ -676,41 +681,91 @@ resolved = schema.build(decode(schema, data))
 
 It exists because the transport cannot express, by type, everything the core
 demands. JSON has no way to tell `3` from `3.0`, so a float typed in the browser
-arrives as an `int`; and a date or a time travels as an ISO string where the
-core wants a `date`/`time` object. `build()` validates by exact type and would
-reject both. Rather than patch this per type at the call site, `decode()` walks
-the schema shapes and, guided by the shape at each path, prepares the values the
-transport could not carry faithfully.
+arrives as an `int`; a date or a time travels as an ISO string where the core
+wants a `date`/`time` object; an enum member travels as the name of that member;
+and where two options of a union share a portable spelling, the value travels
+inside a `$type`/`$value` wrapper that names the one meant. `build()` validates
+by exact type and would reject every one of those.
 
-**What it prepares today:**
+**Restoring that representation is the core's work, and `decode()` delegates
+it.** The portable form is written by `pytypehint` — `to_dict()` spells a date
+the way decode reads one — and read back by `pytypehint`, in
+`Signature.decode()` / `Struct.decode()`. This layer calls that method and adds
+nothing to it. One reading of the transport is what keeps the browser and the
+core agreeing on what a value means; a second reader here would be a second
+answer, differing exactly where it is most expensive to notice — in a value the
+two layers file under different options.
 
-| Shape at the path | Transport value | Prepared into |
+What the core deliberately does not own is **storage**. A file reference is a
+`str` whose meaning lives in a host's uploads directory or object store, so the
+core reads an extension off the text and stops. That is the one thing this layer
+adds of its own:
+
+| Step | Owner |
+| --- | --- |
+| the portable representation: `int → float`, ISO text → `date`/`time`, member name → enum member, and the `$type`/`$value` wrapper | `schema.decode()`, in the core |
+| the file references, at every file node of the decoded tree | `file_resolver`, in this layer |
+| that the schema is a compiled `Signature` or `Struct` | this layer, with a `TypeError` |
+| every rule about the value itself | `schema.build()` |
+
+So `decode(schema, data)` without a resolver **is** `schema.decode(data)` with
+that schema check in front of it, and `decode(schema, data, file_resolver=...)`
+is the same answer with one further pass over the decoded tree, described in
+[`file_resolver`](#file_resolver) below.
+
+**What arrives, and what it is restored to:**
+
+| Shape at the path | Transport value | Restored into |
 | --- | --- | --- |
 | `Float` | an `int` (`3`) | a `float` (`3.0`) |
-| `Date`  | an ISO string (`"2026-07-22"`) | `date.fromisoformat(...)` |
-| `Time`  | an ISO string (`"14:30:00"`)   | `time.fromisoformat(...)` |
-| `EnumShape` | a member name (`"ACTIVO"`) | the member `cls["ACTIVO"]` |
+| `Date`  | canonical ISO text (`"2026-07-22"`) | a `date` |
+| `Time`  | canonical ISO text (`"14:30:00"`)   | a `time` |
+| `EnumShape` | a member name (`"ACTIVO"`) | that member, an alias resolving to the member it aliases |
 | `Str` with `FileHint` | a reference (`"informe-<uuid>.pdf"`) | `file_resolver(reference)`, only when a resolver is given (see below) |
 
-It converts only where that shape is the single possible reading of the path.
+The reading is made only where the shape at the path is the single possible one.
 Root fields, nested objects, lists (and nested lists), optionals (a `None`
 passes through), and union branches are all covered. Everything else passes
-through untouched. A date/time whose string `fromisoformat` cannot parse, or an
-enum name that is not a member (`cls[name]` raising `KeyError`), is left intact
-for `build()` to reject.
+through untouched: an enum name that is not a member, a date that is spelled
+correctly but is not a real calendar day (`2026-02-31`), a number where a string
+belongs — each reaches `build()` as it arrived, and is reported there.
 
-**`decode()` never guesses from a value's content.** It converts a string to a
-`date` because the *shape* (or an explicit `$type`) says so, never because the
-string "looks like" a date. A `str` field carrying `"2026-07-22"` stays a
-string. This is the rule that keeps the conversion honest, and it is inviolable.
+**`decode()` never guesses from a value's content.** A string becomes a `date`
+because the *shape* (or an explicit `$type`) says so, never because the string
+"looks like" a date. A `str` field carrying `"2026-07-22"` stays a string. This
+is the rule that keeps the reading honest, it is inviolable, and it is what the
+two paragraphs below are strict for.
 
-`decode()` **prepares, it does not validate.** A value the core will reject —
-`"abc"` in a float field, `"not-a-date"` in a date field — passes through
-unchanged, and `build()` reports it with its own error. `decode()` never raises
-on a value of its own accord; the error is the core's territory. (It does raise
-on a schema that is neither a `Signature` nor a `Struct`: that is a programming
-error, not a value. And a `file_resolver` the host supplies may raise — its
-exception travels out untouched.)
+**The spelling has to be canonical.** A `date` is read from `YYYY-MM-DD`, and a
+`time` from `HH:MM` with optional seconds, an optional fraction of up to six
+digits and an optional offset — the forms `isoformat()` writes and the native
+pickers produce. Nothing else is a date or a time here. `date.fromisoformat()`
+and `time.fromisoformat()` accept far more than that, and their grammars overlap:
+`"20200101"` reads as a date *and* as a time, and `"2020"` reads as `20:20`.
+Letting them decide would let the *text* of a value select an option, which is
+the one thing this pipeline must never do, so a non-canonical spelling travels
+intact and `build()` reports it. (The fraction and the offset are read even
+though `Time` accepts neither, so the refusal comes from the shape's own rule —
+whole seconds, naive — rather than from the value falling through as "not a time
+at all".)
+
+**An integer becomes a float only where the two are the same number.** `3`
+becomes `3.0` because that is one value written twice. `2**53 + 1` is not: above
+`2**53` the floats thin out, so converting it answers with a *neighbour*, and an
+integer too large to convert has no answer at all. Both travel intact, because
+restoring either would hand `build()` a number the transport never carried — and
+`build()` would accept it, which is the one payload this layer must not invent.
+The test is exactness, not size.
+
+**`decode()` prepares, it does not validate**, and **it never raises on a value
+of its own accord.** A value the core will reject — `"abc"` in a float field,
+`"not-a-date"` in a date field, an integer of four hundred digits where a float
+is wanted — passes through unchanged, and `build()` reports it with its own
+error and its own path. The promise is total: there is no value, of any type,
+size or spelling, for which `decode()` raises. (It does raise on a schema that is
+neither a `Signature` nor a `Struct`: that is a programming error, not a value.
+And a `file_resolver` the host supplies may raise — its exception travels out
+untouched.)
 
 ### Unions and the wrapper
 
@@ -720,23 +775,45 @@ float` (both a JSON number) and any mix of `str`, `date`, `time` and enums (all 
 JSON string). Their branches travel `wrapped`
 ([plan contract](plan.md#union-transport)): `{"$type": "float", "$value": 3}`,
 `{"$type": "date", "$value": "2026-07-22"}`, `{"$type": "str", "$value":
-"2026-07-22"}`, `{"$type": "Estado", "$value": "ACTIVO"}`. `decode()` reads
-`$type` and consumes the wrapper: the `float` branch coerces `$value`, a
-`date`/`time` branch runs `fromisoformat`, an enum branch turns the name into its
-member, a `str` branch keeps its string, and each unwraps to the bare value the
-core routes by exact Python type. The `$type` is not discarded — it is *answered*: the
-ambiguity it named exists only on the wire.
+"2026-07-22"}`, `{"$type": "Estado", "$value": "ACTIVO"}`. The core reads
+`$type`, restores `$value` as the branch it names, and consumes the wrapper: the
+`float` branch yields a `float`, a `date`/`time` branch a `date`/`time`, an enum
+branch the member, a `str` branch its string, and each unwraps to the bare value
+the core routes by exact Python type. The `$type` is not discarded — it is
+*answered*: the ambiguity it named exists only on the wire.
 
-A wrapper the core genuinely needs — `list[str] | list[int]`, where both
-branches are the same runtime type — is kept as it is; `decode()` only prepares
-what is inside `$value`. The general rule: `decode()` converts where the shape
-is the only possible reading of the path, and in a union the `$type` fixes that
-reading — the string's content is never consulted.
+Two wrappers are **not** consumed, and both refusals are load-bearing.
 
-`decode()` walks the schema through the core's public surface only
-(`Struct.fields`, `Field.shape`, `List.item`, `type(shape) is Float`/`Date`/
-`Time`/`EnumShape`, `EnumShape.cls`, `option_id()`): it never touches the core
-internals.
+**A wrapper the core genuinely needs is kept.** `list[str] | list[int]` has
+branches of one runtime type, so the discriminator is still what routes them
+when `build()` runs; the wrapper stands and only what is inside `$value` is
+restored.
+
+**A wrapper whose payload never read as the branch it names is kept too.** In
+`str | date`, `{"$type": "date", "$value": "not-a-date"}` names the `date`
+branch, and `"not-a-date"` is not a date. Consuming the wrapper there would file
+the string under the `str` beside it — silently, and `build()` would accept it,
+which is the worst of the available outcomes: the transport said `date` and the
+pipeline answered `str` without anyone being told. So the wrapper survives and
+`build()` reports it against the branch that was actually named. That refusal
+also closes a door on the file side: a wrapper naming a branch its payload did
+not reach can no longer deposit a reference into a `FileHint` field behind
+`file_resolver`'s back.
+
+Anything that merely resembles a wrapper — an extra key beside the two reserved
+ones, a missing `$value`, a `$type` naming no branch of the path, a wrapper
+where the path is not a union at all — is malformed transport rather than a
+wrapper, and travels whole so `build()` still sees the evidence.
+
+The general rule under all of it: the reading is fixed by the shape, in a union
+the `$type` fixes which shape, and the value's content is never consulted.
+
+For the file pass it adds, `decode()` reaches into the core through its public
+surface only (`Signature.params`, `Struct.fields`, `Field.shape`, `List.item`,
+`Str.file_hint`, `Struct.cls`, `option_id()`): it never touches the core
+internals, and it names no shape whose portable spelling the core restores —
+importing `Float`, `Date`, `Time` or `EnumShape` here would mean something in
+this layer had started deciding what such a value means.
 
 ### `file_resolver`
 
@@ -765,17 +842,22 @@ whatever the host returns comes out and continues down the pipeline to
 `build()`. There is nothing to register and no type to subclass: the callable is
 the whole contract.
 
-The resolver rides the walk that was already there, so it reaches every position
-a file node can occupy — a root field, a `list[File]` (once per reference, in
-order), a struct field, a list item, or the selected branch of a union in any of
-the three transport modes. What decides the call is the **shape** — a `Str`
+The resolver **is** the pass this layer adds, and it runs over the tree the core
+has already decoded, so it reaches every position a file node can occupy — a
+root field, a `list[File]` (once per reference, in order), a struct field, a list
+item, or the selected branch of a union in any of the three transport modes;
+where the core kept a wrapper, the pass descends into its `$value` by the same
+option id the core matched. What decides the call is the **shape** — a `Str`
 carrying `FileHint`, and unambiguously so — never what the string looks like,
-which is the same rule that governs every other conversion here. An ordinary
-`str` field holding something that resembles a reference is untouched.
+which is the same rule that governs the reading before it. An ordinary `str`
+field holding something that resembles a reference is untouched.
 
 Absence stays absence: a field the transport does not carry, an explicit `None`,
 a switched-off optional and an empty list never reach the resolver. A reference
-planted with `setValue()` is an ordinary file value, so it does pass through.
+planted with `setValue()` is an ordinary file value, so it does pass through. So
+is a value the core declined to route — a surviving wrapper, a dict where a
+dataclass was expected: the pass descends nothing it cannot name, and `build()`
+reports what is left.
 
 The library learns nothing about storage in exchange. It knows the value belongs
 to a file node; whether that reference becomes a local path, an object-store key

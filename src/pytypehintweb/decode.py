@@ -1,36 +1,49 @@
 from collections.abc import Callable
-from datetime import date, time
+from typing import Any
 
-from pytypehint import (
-    Date, EnumShape, Float, Int, List, NoneShape, Signature, Str, Struct, Time,
-)
+from pytypehint import Field, List, NoneShape, Shape, Signature, Str, Struct
 
 # Reserved keys of the discriminated transport, mirrored from the core. A field
 # can never carry them: field names must be identifiers, and neither is.
 _TYPE = "$type"
 _VALUE = "$value"
 
+_Resolver = Callable[[str], str]
 
-def decode(schema, data, *,
-           file_resolver: Callable[[str], str] | None = None):
-    # Prepare a JSON-parsed transport object for schema.build(). JSON collapses
-    # 3.0 to 3 and carries a date or time as an ISO string, so decode walks the
-    # schema and coerces int -> float and str -> date/time wherever the shape is
-    # the only possible reading. Everything else passes through untouched.
+
+def decode(schema: Signature | Struct, data: Any, *,
+           file_resolver: _Resolver | None = None) -> Any:
+    # Prepare a JSON-parsed transport object for schema.build().
     #
-    # The shape decides, never the content: a str that looks like a date stays a
-    # str unless the shape says otherwise. decode prepares, it does not validate;
-    # a value the core will reject travels unchanged so build() reports it. The
-    # returned dict is always new.
+    # The answer is a dict for the transport this is written for, but the return
+    # type says Any because it is not one for every input: decode prepares and
+    # does not validate, so a `data` that is not a dict is handed back as it
+    # came, for build() to report. Promising dict[str, Any] would be a promise
+    # the function does not keep, and a caller would be typed into trusting it.
     #
-    # file_resolver, when given, is called with the reference at every file node
-    # reached and its return value continues down the pipeline, so a host can map
+    # The portable representation belongs to the core, and schema.decode() is
+    # where it lives: it restores the float a JSON writer flattened to an int,
+    # the date and time the wire carried as text and the enum member it carried
+    # as a name, and it consumes the discriminated wrapper wherever the exact
+    # value is enough on its own. pytypehintweb does not repeat any of that —
+    # one reading of the transport is what keeps the browser and the core
+    # agreeing on what a value means.
+    #
+    # What the core deliberately does not own is storage. file_resolver, when
+    # given, is called with the reference at every file node of the decoded
+    # tree and its return value continues down the pipeline, so a host can map
     # a reference to a path or an object-store key without decode knowing what
     # storage means. An exception it raises propagates unchanged.
-    return _decode_fields(_fields_of(schema), data, file_resolver)
+    fields = _fields_of(schema)
+    decoded = schema.decode(data)
+
+    if file_resolver is None:
+        return decoded
+
+    return _resolve_fields(fields, decoded, file_resolver)
 
 
-def _fields_of(schema):
+def _fields_of(schema: Any) -> tuple[Field, ...]:
     if type(schema) is Struct:
         return schema.fields
 
@@ -42,230 +55,116 @@ def _fields_of(schema):
         f"{type(schema).__name__}")
 
 
-def _transport_type(shape):
+def _resolve_fields(fields: tuple[Field, ...], data: Any,
+                    resolver: _Resolver) -> Any:
+    if type(data) is not dict:
+        # Not the shape the walk descends; build() reports the mismatch.
+        return data
+
+    known = {field.name: field for field in fields}
+    result = {}
+
+    for key, value in data.items():
+        # An unknown key travels intact, and only a string can name a field.
+        field = known.get(key) if type(key) is str else None
+        result[key] = (value if field is None
+                       else _resolve(field.shape, value, resolver))
+
+    return result
+
+
+def _is_file(shape: Shape) -> bool:
+    return type(shape) is Str and shape.file_hint is not None
+
+
+def _resolve(shapes: tuple[Shape, ...], value: Any,
+             resolver: _Resolver) -> Any:
+    # A None is a value, not a path to descend, so nothing below it — the file
+    # resolver included — ever sees it. A field the transport omits entirely is
+    # never reached at all: it takes its default.
+    if type(value) is str:
+        # The resolver only fires on an unambiguous file reading: a lone Str
+        # carrying FileHint. The core admits at most one Str per option group —
+        # two would share the option id "str" — so the count is a guard for
+        # shapes assembled by hand rather than a case the compiler can produce.
+        strings = [s for s in shapes if type(s) is Str]
+
+        if len(strings) == 1 and _is_file(strings[0]):
+            return resolver(value)
+
+        return value
+
+    if type(value) is list:
+        lists = [s for s in shapes if type(s) is List]
+
+        # A bare list only reaches here with a single List branch; a union of
+        # lists shares one Python type, so the core keeps its wrapper and the
+        # branch below names which List this is.
+        if len(lists) == 1:
+            return [_resolve(lists[0].item, item, resolver) for item in value]
+
+        return value
+
+    if type(value) is dict:
+        return _resolve_dict(shapes, value, resolver)
+
+    return value
+
+
+def _transport_type(shape: Shape) -> type:
     # The runtime type a value arrives as — a dataclass as a dict, anything else
-    # as its pytype. This is the grouping the core uses to decide on a wrapper.
+    # as its pytype. This is the grouping the core keeps a wrapper for.
     return dict if type(shape) is Struct else shape.pytype
 
 
-def _field_by_name(fields, name):
-    for field in fields:
-        if field.name == name:
-            return field
+def _kept_branch(shapes: tuple[Shape, ...], discriminator: Any) -> Shape | None:
+    # The core leaves a wrapper standing only where several options share one
+    # runtime type, because there the discriminator is still what tells them
+    # apart. Dataclasses are left out: they share the dict and name themselves
+    # inline instead. Anywhere else a wrapper is malformed transport the core
+    # declined to consume, and descending into one would hand the host a
+    # reference from a path that never carried a wrapped value.
+    groups: dict[type, list[Shape]] = {}
+
+    for shape in shapes:
+        groups.setdefault(_transport_type(shape), []).append(shape)
+
+    for transport, group in groups.items():
+        if len(group) == 1 or transport is dict:
+            continue
+
+        for shape in group:
+            if shape.option_id() == discriminator:
+                return shape
 
     return None
 
 
-def _decode_fields(fields, data, resolver):
-    if type(data) is not dict:
-        # Not the shape decode walks; build() reports the mismatch.
-        return data
+def _resolve_dict(shapes: tuple[Shape, ...], value: dict[str, Any],
+                  resolver: _Resolver) -> Any:
+    # decode() has already run, so a wrapper still standing is one the core
+    # kept, and its payload is data like any other. A dict that merely resembles
+    # a wrapper — on a path that never travels wrapped, or naming a branch that
+    # does not — is malformed transport, and it travels intact for build() to
+    # report. Nothing below it is walked and the resolver never sees it.
+    if set(value) == {_TYPE, _VALUE}:
+        branch = _kept_branch(shapes, value[_TYPE])
 
-    result = {}
+        if branch is None:
+            return value
 
-    for key, value in data.items():
-        field = _field_by_name(fields, key)
+        return {_TYPE: value[_TYPE],
+                _VALUE: _resolve((branch,), value[_VALUE], resolver)}
 
-        # An unknown key travels intact; rejecting it is build()'s job.
-        result[key] = (value if field is None
-                       else _decode_options(field.shape, value, resolver))
-
-    return result
-
-
-def _decode_options(shapes, value, resolver):
-    # A None is a value, not a path to descend, so nothing below it — the file
-    # resolver included — ever sees it. A field the transport omits entirely is
-    # never reached at all: it takes its default.
-    if value is None:
-        return None
-
-    if type(value) is dict:
-        return _decode_dict(shapes, value, resolver)
-
-    if type(value) is list:
-        return _decode_list(shapes, value, resolver)
-
-    if type(value) is str:
-        return _decode_string(shapes, value, resolver)
-
-    return _decode_scalar(shapes, value)
-
-
-def _to_date(value):
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        # Not an ISO date: pass intact, build() rejects it as the wrong type.
-        return value
-
-
-def _to_time(value):
-    try:
-        return time.fromisoformat(value)
-    except ValueError:
-        return value
-
-
-def _to_enum_member(shape, value):
-    try:
-        # cls[name] resolves through __members__, so an alias returns its
-        # canonical member. An unknown name passes intact for build() to reject.
-        return shape.cls[value]
-    except KeyError:
-        return value
-
-
-def _is_file(shape):
-    return type(shape) is Str and shape.file_hint is not None
-
-
-def _decode_string(shapes, value, resolver):
-    # The resolver only fires on an unambiguous file reading: a lone Str carrying
-    # FileHint. Another Str competing for the path leaves the reference alone
-    # rather than guessing. Whatever the host returns continues as the value.
-    strings = [s for s in shapes if type(s) is Str]
-
-    if resolver is not None and len(strings) == 1 and _is_file(strings[0]):
-        return resolver(value)
-
-    # A Str reading keeps a string a string. Otherwise convert only where a
-    # single Date, Time or enum shape is the one reading; two of them competing
-    # (date | time, date | Estado) is ambiguous, so it goes to the core intact.
-    if strings:
-        return value
-
-    dates = [s for s in shapes if type(s) is Date]
-    times = [s for s in shapes if type(s) is Time]
-    enums = [s for s in shapes if type(s) is EnumShape]
-
-    if (bool(dates) + bool(times) + bool(enums)) != 1:
-        return value
-
-    if len(dates) == 1:
-        return _to_date(value)
-
-    if len(times) == 1:
-        return _to_time(value)
-
-    if len(enums) == 1:
-        return _to_enum_member(enums[0], value)
-
-    return value
-
-
-def _decode_scalar(shapes, value):
-    # `type(value) is int` excludes bool, so a JSON true/false is never a number
-    # here despite bool subclassing int.
-    if type(value) is int:
-        has_float = any(type(s) is Float for s in shapes)
-        has_int = any(type(s) is Int for s in shapes)
-
-        # Coerce only where Float is the single numeric reading; an Int in the
-        # same position (int | float) is ambiguous and the core routes it.
-        if has_float and not has_int:
-            return float(value)
-
-    return value
-
-
-def _decode_list(shapes, value, resolver):
-    lists = [s for s in shapes if type(s) is List]
-
-    # A bare list only reaches here with a single List branch; a union of lists
-    # collides on the transport type and travels wrapped instead.
-    if len(lists) == 1:
-        return [_decode_options(lists[0].item, item, resolver)
-                for item in value]
-
-    return value
-
-
-def _decode_dict(shapes, value, resolver):
-    # A dataclass can never carry $value, so it tells a wrapper from a struct.
-    if _VALUE in value:
-        return _decode_wrapped(shapes, value, resolver)
-
-    if _TYPE in value:
-        return _decode_inline_struct(shapes, value, resolver)
-
-    return _decode_plain_struct(shapes, value, resolver)
-
-
-def _decode_wrapped(shapes, value, resolver):
-    # A wrapped payload is exactly {$type, $value}: anything that only resembles
-    # one is malformed transport and travels intact for build() to report. The
-    # exact-set check also keeps an explicit null payload distinct from an
-    # absent $value, so value[_VALUE] below reads a real payload.
-    if set(value) != {_TYPE, _VALUE}:
-        return value
-
-    # The wrapper is the wire format of a union, so a single-branch path never
-    # travels wrapped: a wrapper there is malformed, not a value to unwrap.
-    branches = [s for s in shapes if type(s) is not NoneShape]
-
-    if len(branches) < 2:
-        return value
-
-    discriminator = value[_TYPE]
-
-    selected = next(
-        (s for s in branches if s.option_id() == discriminator),
-        None)
-
-    if selected is None:
-        # Not a branch decode can name; build() reports it.
-        return value
-
-    inner = _decode_options((selected,), value[_VALUE], resolver)
-
-    # The core only keeps the wrapper where several options share one runtime
-    # type. int and float share a JSON number but not a Python type, so it
-    # routes them bare and decode consumes the wrapper — the coerced payload
-    # already carries the distinction. Otherwise the wrapper stays.
-    group = [s for s in branches
-             if _transport_type(s) == _transport_type(selected)]
-
-    if len(group) == 1:
-        return inner
-
-    return {_TYPE: discriminator, _VALUE: inner}
-
-
-def _decode_inline_struct(shapes, value, resolver):
-    discriminator = value.get(_TYPE)
-
-    struct = next(
-        (s for s in shapes
-         if type(s) is Struct and s.option_id() == discriminator),
-        None)
-
-    if struct is None:
-        return value
-
-    return _decode_struct(struct, value, resolver)
-
-
-def _decode_plain_struct(shapes, value, resolver):
     structs = [s for s in shapes if type(s) is Struct]
 
+    # Several dataclasses are told apart by an inline "$type", by the same
+    # class name the core matches. The key itself is not a field: _resolve_fields
+    # finds no field named "$type" and passes it through.
+    if len(structs) > 1:
+        structs = [s for s in structs if s.cls.__name__ == value.get(_TYPE)]
+
     if len(structs) == 1:
-        return _decode_struct(structs[0], value, resolver)
+        return _resolve_fields(structs[0].fields, value, resolver)
 
     return value
-
-
-def _decode_struct(struct, value, resolver):
-    result = {}
-
-    for key, item in value.items():
-        # $type is the discriminator of an inline struct, not a field; it stays.
-        if key == _TYPE:
-            result[key] = item
-            continue
-
-        field = _field_by_name(struct.fields, key)
-        result[key] = (item if field is None
-                       else _decode_options(field.shape, item, resolver))
-
-    return result
