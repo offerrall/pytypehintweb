@@ -1,6 +1,64 @@
 # Changelog
 
 
+## [1.0.0] - 2026-08-13
+
+The core is now `pytypehint >= 1.0.0`, and the dependency has no upper bound.
+There is no compatibility path back to `0.x`: the atom `IsPathFile` is gone and
+the shape attribute it fed, `Str.is_path_file`, is now `Str.file_hint`. Since
+`_str_node()` reads that attribute on its first line, every `plan_of()` call
+carrying a `str` — not only a file one — failed with `AttributeError` against a
+freshly resolved core. Renaming it is the small half of this change.
+
+The large half is that **the core stopped looking at the filesystem, and the
+documentation that said otherwise was wrong from the moment 1.0.0 resolved.**
+`FileHint` reads one thing off a value: its extension, off the text. It opens
+nothing, so existence, regular-file-ness and byte size are no longer checked
+anywhere in the stack — not in the browser, which never had the bytes, and not in
+the core, which no longer looks. `file does not exist`, `not a file`, `file too
+small` and `file too large` cannot be raised any more, and every claim in these
+documents that rested on them (see the 0.0.3 and 0.0.4 entries below, written
+when they held) is superseded by this one.
+
+Nothing was reimplemented here to compensate. `plan_of()` and `decode()` check
+nothing about storage, on purpose: **a reference is not a path and carries no
+bytes**, and only the host knows what it stands for. That answer has always had
+exactly one seam, `decode(..., file_resolver=...)`, and it is now the only one
+there is: a host decides there whether a reference exists, has expired, belongs
+to this caller or is the right size, and an exception it raises still propagates
+unchanged. One consequence worth knowing: the resolver's *answer* is the value
+that continues, so it faces the extension check too — resolving `report.pdf` to a
+bare `s3://bucket/9f3a1c` fails at `build()`.
+
+`FileHint(min_size=...)` / `max_size=...` still travel to the plan as `minSize`
+and `maxSize`, unchanged. What changed is that the browser is now the only place
+they are ever applied, against a local `File` whose `.size` it can read, before
+any upload. A reference — a plan default or a `setValue()` — carries no bytes, so
+nothing weighs it. A byte bound that has to hold authoritatively belongs beside
+the storage that holds the bytes.
+
+What a schema default still faces is the extension, which means the road a
+prefill takes is no longer a choice between "strict" and "opaque". A host whose
+references are object-store keys can now write one straight into a schema
+default; it renders, travels and comes back intact, exactly as one planted with
+`setValue()` does.
+
+Also from the core's 1.0.0 rules: the option-identity check reaches inside lists,
+so `list[File | str]` is refused while compiling, in its own words rather than
+the field's (`both compile to str`). The adapter's own duplicate-option-id guard
+in `_check_branches` stays, now purely as defense in depth for shapes assembled
+off the compiler's path, and a test drives it there directly.
+
+The bundled demo no longer seeds sample files at startup. It existed only to
+make the two "edit an existing record" prefills satisfy the core's old existence
+check; nothing in the demo reads those bytes, so the seeding, its file list and
+the test pinning them are gone. The upload endpoint, which does write real bytes,
+is untouched.
+
+The plan document is unchanged: `"v"` stays `1`, no key was added, renamed or
+removed, and the browser runtime needed no edit — it never knew the atom's name.
+`pytypehintweb`'s own version is unchanged too.
+
 
 ## [0.0.5] - 2026-08-03
 

@@ -3,9 +3,14 @@ from typing import Annotated
 
 import pytest
 
-from pytypehint import Choices, Max, Min, MultipleOf, Placeholder, Slider, Step
+from pytypehint import (
+    Choices, FileHint, Max, Min, MultipleOf, Placeholder, Slider, Step,
+    signature_of,
+)
 from pytypehintweb import WebConfig, plan_of
-from pytypehintweb.plan import _inclusive_length, _int_node, _str_node
+from pytypehintweb.plan import (
+    _inclusive_length, _int_node, _options_node, _str_node,
+)
 
 
 class _Bound:
@@ -43,7 +48,7 @@ class _FakeStr:
     """A duck-typed Str shape that bypasses the core, to reach the adapter's
     own length-bound guards directly."""
 
-    is_path_file = None
+    file_hint = None
     is_password = None
     rows = None
     choices = None
@@ -131,6 +136,22 @@ def test_inclusive_length_converts_and_guards():
 
     with pytest.raises(TypeError, match="exclusive length bounds are not"):
         _inclusive_length(_Bound(3, True), "p", "w")
+
+
+# --- branches that cannot be told apart --------------------------------------
+
+def test_the_adapter_defensively_rejects_two_branches_sharing_an_option_id():
+    # option_id() is the $type the browser and decode() route a union by, so two
+    # branches sharing one are unroutable. The core rejects the collision on
+    # every path it compiles — a field's union, and since 1.0.0 a list's items
+    # too — so this guard is only reachable by handing the adapter a union it
+    # assembled itself. It stays for exactly that road.
+    def example(value: Annotated[str, FileHint()]) -> None: ...
+
+    file_shape = signature_of(example).params[0].shape[0]
+
+    with pytest.raises(TypeError, match="share the option id 'str'"):
+        _options_node((file_shape, file_shape), WebConfig(), "fields.value")
 
 
 # --- ordinary integer bound conversion ---------------------------------------

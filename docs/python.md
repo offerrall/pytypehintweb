@@ -185,7 +185,7 @@ the first render with no "choose one" step.
 
 ### Files
 
-`IsPathFile` on a `str` turns the field into a **file node** (`kind: "file"`)
+`FileHint` on a `str` turns the field into a **file node** (`kind: "file"`)
 rather than a text box. Its value is a reference string the browser widget
 **generates locally** the moment the user picks a file — the file's name
 compressed to bare ASCII (15 characters at most), a UUID, and the file's
@@ -194,10 +194,11 @@ a lenient `value.lower().endswith(ext)` filter over the declared list — a guar
 against honest mistakes. Nothing about the transport changes: a file field is a
 `str` on the wire.
 
-**The reference is not a path, and the core wants a path.** Since
-`pytypehint 0.0.7`, `IsPathFile` certifies the file itself on the way in —
-extension, existence, regular file and byte size — so a reference the host never
-turned into real storage is refused by `build()`. Bridging the two is the host's
+**A reference is not a path, and it carries no bytes.** It is an opaque token
+that means something to the host and to nobody else. `FileHint` reads one thing
+off it, the extension, and reads it off the *text*: the core opens nothing, so it
+cannot tell you whether the reference stands for stored bytes, whether they are
+still there, how many there are or whose they are. Answering that is the host's
 job, and the seam the library gives it is `decode(..., file_resolver=...)`:
 
 ```python
@@ -205,27 +206,32 @@ prepared = decode(schema, body, file_resolver=lambda ref: str(UPLOADS / ref))
 resolved = schema.build(prepared)
 ```
 
-Without a resolver the reference travels untouched and `build()` will reject it
-unless it happens to name a real file. See [`file_resolver`](#file_resolver) for
-the full walk it covers.
+The resolver is where a host looks the reference up in its own storage and
+decides what to hand the pipeline — a path, an object-store key, anything the
+function behind the schema understands. It is also where a host refuses: raise
+from it and the exception travels out of `decode()` unchanged. Without a resolver
+the reference travels untouched and `build()` returns it as the plain string it
+is. See [`file_resolver`](#file_resolver) for the full walk it covers.
 
 | Annotation | Plan option |
 | --- | --- |
-| `IsPathFile(extensions=...)` | `extensions` — lowercase, dotted, possibly empty (any file), mapped to the input's `accept` |
-| `IsPathFile(min_size=...)` / `max_size=...` | `minSize` / `maxSize` — bytes, per file, `null` when unbounded |
-| `list[Annotated[str, IsPathFile(...)]]` | one file node with `multiple: true`; the list's `Min`/`Max` become `minFiles`/`maxFiles` |
+| `FileHint(extensions=...)` | `extensions` — lowercase, dotted, possibly empty (any file), mapped to the input's `accept` |
+| `FileHint(min_size=...)` / `max_size=...` | `minSize` / `maxSize` — bytes, per file, `null` when unbounded |
+| `list[Annotated[str, FileHint(...)]]` | one file node with `multiple: true`; the list's `Min`/`Max` become `minFiles`/`maxFiles` |
 
 The byte bounds are **per file**, never a combined total: three 4 MB files under
 a 5 MB `max_size` are three valid files. Counting them is `minFiles` / `maxFiles`,
 a separate question.
 
-What the browser does with them is a courtesy. A local `File` carries a `.size`,
-so the widget refuses one that already breaks a bound before any upload happens
-— the point being to fail before the bytes move, not instead of the core. A
-reference the host plants carries no bytes at all, so nothing weighs it there,
-and neither reading changes the verdict: `build()` measures the real file. The
-only bound that has to be a safe JavaScript integer is the one written into the
-plan; `plan_of()` refuses a larger one rather than rounding it.
+They are a **declaration**, and the browser is the only place that can act on
+it. A local `File` carries a `.size`, so the widget refuses one that already
+breaks a bound before any upload happens — failing before the bytes move. A
+reference carries no bytes at all, so nothing weighs it: not the widget, which
+has no size to read, and not the core, which never opens anything. **A byte
+bound you need to be authoritative belongs beside the storage that holds the
+bytes**, in the host's own upload endpoint or resolver. The only bound that has
+to be a safe JavaScript integer is the one written into the plan; `plan_of()`
+refuses a larger one rather than rounding it.
 
 **A file composes like any other node.** There is no rule about files in lists,
 in structs or in unions: a shape is representable when each of its nodes is, and
@@ -234,12 +240,12 @@ depth, with or without a default:
 
 | Shape | Node |
 | --- | --- |
-| `Annotated[str, IsPathFile()]` | `file` |
-| `Annotated[str, IsPathFile()] \| None` | `file`, optional |
-| `list[Annotated[str, IsPathFile()]]` | one `file` node with `multiple: true` |
-| `list[Annotated[str, IsPathFile()] \| None]` | `list` of `optional` of `file` |
-| `list[Annotated[str, IsPathFile()] \| int]` | `list` of `choice` |
-| `list[list[Annotated[str, IsPathFile()]]]` | `list` of `multiple` `file` |
+| `Annotated[str, FileHint()]` | `file` |
+| `Annotated[str, FileHint()] \| None` | `file`, optional |
+| `list[Annotated[str, FileHint()]]` | one `file` node with `multiple: true` |
+| `list[Annotated[str, FileHint()] \| None]` | `list` of `optional` of `file` |
+| `list[Annotated[str, FileHint()] \| int]` | `list` of `choice` |
+| `list[list[Annotated[str, FileHint()]]]` | `list` of `multiple` `file` |
 | a dataclass with a file field | `object` containing a `file` |
 | a dataclass with a `list[File]` field | `object` containing a `multiple` `file` |
 | `list[SomeDataclassWithAFile]` | `list` of `object` |
@@ -261,43 +267,51 @@ state. In the browser it is exactly what `FileWidget.setValue()` means — shown
 the current file, transported back untouched, carrying no bytes, no local `File`
 and no upload — because `compileForm()` applies it *by calling* `setValue()`.
 
-There are two ways a reference can reach a form, and they have different
-guarantees. Keeping them apart is the whole story:
+There are two ways a reference can reach a form, and they are the same road seen
+from two points:
 
-**1. Strict: a default in the Python schema, including a prefill.** A prefill is
-a temporary default, so it takes the same road:
+**1. A default in the Python schema, including a prefill.** A prefill is a
+temporary default, so it takes the same route:
 
 ```text
-value → schema default → pytypehint compiles → IsPathFile certifies
+value → schema default → pytypehint checks the extension
       → plan_of() → plan → compileForm() → setValue()
 ```
 
-`IsPathFile` certifies the value *before* a plan can exist: exactly `str`, the
-file exists, it is a regular file, the extension matches, and `min_size` /
-`max_size` hold when used. A default naming a file that is not there fails with
-`file does not exist`, and no plan is produced — which is the point, because it
-is what stops a form from showing a file nobody has. A `list[File]` default is
-certified element by element, and the list's `Min`/`Max` are checked too.
+The core checks what it can check about a `str`: that it is one, and that its
+text ends in an accepted extension. A `list[File]` default is checked element by
+element — `[1]: not an accepted file type` names the offender — and the list's
+`Min`/`Max` are checked too. Nothing else is inspected: the value is not opened,
+so a reference that names no local file is a perfectly good default, and so is an
+object-store key. That is deliberate — most hosts do not keep uploads as local
+paths, and a reference is exactly the token they do have.
 
-For the core, "certified" means a real local file. So a host whose references are
-**not** local paths cannot pass one through a schema default.
-
-**2. Opaque: a reference applied at runtime.** That host uses the other road:
+**2. A reference applied at runtime with `setValue()`.**
 
 ```text
-widget.setValue("bucket/key.pdf")        → frontend state only, nothing certified
-form.read() → decode(..., file_resolver=…) → real path → schema.build()
-            → IsPathFile certifies here instead
+widget.setValue("bucket/key.pdf")        → frontend state
+form.read() → decode(..., file_resolver=…) → the host's own value → schema.build()
 ```
 
-`setValue()` certifies nothing by itself — it is frontend state. The guarantee
-arrives later, when the host resolves the reference and the core checks the path
-it resolved to. A reference that expired in between shows fine in the form and
-fails at `build()`, which is correct: the form and the storage are different
-layers.
+Both roads land the widget in the same observable state, and neither of them
+proves the bytes exist — nothing in this library or in the core ever did that,
+and since `pytypehint 1.0.0` nothing claims to. A reference that has expired,
+that was never uploaded or that belongs to somebody else shows fine in the form
+and travels back intact. **The place to catch it is the resolver**, which is the
+one point where code that knows the storage sees the reference:
 
-Both roads land the widget in the same observable state. Only the first one has
-been certified by the time the page renders.
+```python
+def resolve(reference: str) -> str:
+    record = uploads.get(reference, owner=current_user)   # the host's own rules
+
+    if record is None:
+        raise LookupError(f"unknown or expired upload: {reference}")
+
+    return record.path
+```
+
+`decode()` does not catch that exception; it propagates unchanged, with its own
+type, to whoever called `decode()`.
 
 **A struct with an internal path round-trips through an edit form.** Create and
 edit are the same form: a host builds it from a `Struct` (`struct_of(User)`),
@@ -312,20 +326,24 @@ one step earlier: `setValue()` plants the current file at mount, a default has
 the plan carry it, and the widget cannot tell the two apart because the default
 reaches it *through* `setValue()`.
 
-**Storage is still the host's, and now it is checked.** The library mints and
-transports a reference and knows nothing about where bytes live. What changed
-with `pytypehint 0.0.7` is that the promise is no longer taken on trust: a host
-that mints a reference and never uploads the bytes finds out at `build()`, with
-`file does not exist`, instead of shipping a string that points at nothing. A
-host that stores under a name of its own maps the two with `file_resolver`.
-FuncToWeb (or any wrapper) owns that mapping; see
+**Storage is the host's, entirely.** The library mints and transports a
+reference and knows nothing about where bytes live — not where they are, not
+whether they arrived, not how many there are. A host that mints a reference and
+never uploads the bytes ships a string that points at nothing, and the only code
+in a position to notice is its own: at the upload endpoint, or in the
+`file_resolver` when the reference comes back. One caveat worth knowing: the
+resolver's **answer** is what continues down the pipeline, so it faces the
+extension check too. A host resolving `report.pdf` to a bare key
+`s3://bucket/9f3a1c` fails at `build()` with `not an accepted file type` — keep
+the extension, or declare `FileHint()` without one. FuncToWeb (or any wrapper)
+owns that mapping; see
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
-Only a bare `IsPathFile` is emitted today. The other `Str` atoms — `Min`, `Max`,
+Only a bare `FileHint` is emitted today. The other `Str` atoms — `Min`, `Max`,
 `Pattern`, `Choices`, `IsPassword`, `Rows`, `Placeholder` — describe a text box
-and have no meaning on a file control, so any of them alongside `IsPathFile`
+and have no meaning on a file control, so any of them alongside `FileHint`
 raises `TypeError` ("not supported yet"), deferred until a real case asks for it,
-exactly as `Float.slider` is. `IsPathFile`'s own `min_size` and `max_size` are
+exactly as `Float.slider` is. `FileHint`'s own `min_size` and `max_size` are
 **not** among them: they describe the file, not a text box, and they travel.
 `Label` and `Description` are the field's, not the `Str`'s, so a labelled file
 field is fine.
@@ -672,7 +690,7 @@ transport could not carry faithfully.
 | `Date`  | an ISO string (`"2026-07-22"`) | `date.fromisoformat(...)` |
 | `Time`  | an ISO string (`"14:30:00"`)   | `time.fromisoformat(...)` |
 | `EnumShape` | a member name (`"ACTIVO"`) | the member `cls["ACTIVO"]` |
-| `Str` with `IsPathFile` | a reference (`"informe-<uuid>.pdf"`) | `file_resolver(reference)`, only when a resolver is given (see below) |
+| `Str` with `FileHint` | a reference (`"informe-<uuid>.pdf"`) | `file_resolver(reference)`, only when a resolver is given (see below) |
 
 It converts only where that shape is the single possible reading of the path.
 Root fields, nested objects, lists (and nested lists), optionals (a `None`
@@ -751,7 +769,7 @@ The resolver rides the walk that was already there, so it reaches every position
 a file node can occupy — a root field, a `list[File]` (once per reference, in
 order), a struct field, a list item, or the selected branch of a union in any of
 the three transport modes. What decides the call is the **shape** — a `Str`
-carrying `IsPathFile`, and unambiguously so — never what the string looks like,
+carrying `FileHint`, and unambiguously so — never what the string looks like,
 which is the same rule that governs every other conversion here. An ordinary
 `str` field holding something that resembles a reference is untouched.
 

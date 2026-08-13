@@ -98,8 +98,8 @@ def test_time_choices_travel_as_iso_with_seconds():
     def f(value: Annotated[time, Choices(values=(time(9, 0),
                                                  time(17, 30)))]) -> None: ...
 
-    # The canonical is isoformat(): always HH:MM:SS. pytypehint 0.0.6 pins a time
-    # to whole seconds, so no sub-second fraction can ever appear here.
+    # The canonical is isoformat(): always HH:MM:SS. The core pins a time to
+    # whole seconds, so no sub-second fraction can ever appear here.
     assert _node(f)["options"]["choices"] == ["09:00:00", "17:30:00"]
 
 
@@ -109,7 +109,7 @@ def test_a_time_default_travels_as_iso_with_seconds():
     assert plan_of(f)["fields"][0]["default"] == "14:30:00"
 
 
-# The core (pytypehint 0.0.6) is the single source of the whole-seconds rule: it
+# The core is the single source of the whole-seconds rule: it
 # rejects a microsecond time in a bound, a choice or a default at compile time, so
 # plan_of() can never emit one. plan_of does not re-validate what the core owns.
 def test_the_core_rejects_a_microsecond_time_bound():

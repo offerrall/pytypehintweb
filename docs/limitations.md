@@ -155,44 +155,46 @@ describe. What is *limited* here:
   `multiple` widget rather than a list of single-file widgets — and that is a
   shortcut, not a restriction on the others.
   The only file combinations still refused are the ones listed here as genuinely
-  unrepresentable: the `Str` atoms beside `IsPathFile`, the byte-size bounds, and
-  a union whose branches share a transport (see below).
+  unrepresentable: the `Str` atoms beside `FileHint`, and a union whose branches
+  share a transport (see below). The byte-size bounds are not among them — they
+  travel; what is limited is who can act on them.
 - `File | str` — and so `list[File | str]` — is **inconstructible**, and the core
   says so: a file *is* a `Str`, so both branches carry the option id `"str"` and
-  the schema fails to compile with `duplicate option types in shape`. Nothing can
-  tell the two apart on the wire, so this is a real ambiguity rather than a
-  missing feature. It does not extend to `File | None` or `File | int`, whose
-  branches are distinguishable and both work.
-- A file **default is an existing reference**, the same thing `setValue()` takes.
-  The browser never checks that bytes stand behind it; where the guarantee comes
-  from depends on which road the reference took. A default written into a
-  **Python schema** — a prefill included, since a prefill is a temporary default
-  — is certified by `IsPathFile` before a plan can exist, so it has to be a real
-  local file and a missing one fails with `file does not exist` instead of
-  rendering. A reference applied at runtime with **`setValue()`** is frontend
-  state only; it is certified later, when the host resolves it with
-  `decode(..., file_resolver=...)` and the core checks the resulting path. A
-  reference that expires in between shows fine and fails at `build()`.
-- `IsPathFile(min_size=...)` / `max_size=...` travel now, but only a **local
-  pick** can be weighed against them. A reference carries no bytes, so a form
-  can show one that breaks a bound and only fail at `build()`. A bound larger
-  than a safe JavaScript integer is refused rather than rounded.
+  the schema fails to compile (`duplicate option types in shape` on a field,
+  `both compile to str` on a list's items). Nothing can tell the two apart on the
+  wire, so this is a real ambiguity rather than a missing feature. It does not
+  extend to `File | None` or `File | int`, whose branches are distinguishable and
+  both work.
+- A file **default is an existing reference**, the same thing `setValue()` takes,
+  and it is checked exactly as far as text can be checked: it must be a `str`
+  whose extension is accepted. Nothing verifies that bytes stand behind it — not
+  the browser, which never saw them, and not the core, which opens nothing. A
+  reference that was never uploaded, that has expired or that belongs to somebody
+  else renders like any other and travels back intact.
+- `FileHint(min_size=...)` / `max_size=...` travel, but only a **local pick** can
+  be weighed against them, because only a local `File` carries a `.size`. A
+  reference carries no bytes, so a form can show one that breaks a bound and
+  nothing downstream will object. A bound larger than a safe JavaScript integer
+  is refused rather than rounded.
 
-**A reference is not a path, and the browser cannot close that gap.** All the
-widget ever checks is the extension — a lenient `endswith` filter — and it has no
-way to know whether bytes were stored. The core does check, since
-`pytypehint 0.0.7`: `IsPathFile` certifies extension, existence, regular file and
-byte size, so an unstored reference fails at `build()`. Mapping the reference to
-where the bytes actually live is the host's, through
-`decode(..., file_resolver=...)`; a wrapper such as FuncToWeb that builds the
-upload cycle owns it. The full cycle is in
+**A reference is not a path, and nothing between the browser and the core can
+close that gap.** All the widget ever checks is the extension — a lenient
+`endswith` filter — and the core checks the same extension on the same text.
+Neither of them knows whether bytes were stored, and since `pytypehint 1.0.0`
+neither claims to: existence, regular-file-ness and byte size left the core, so
+an unstored reference builds into the plain string it always was. Deciding
+whether a reference is real is the **host's**, at the only point where code that
+knows the storage sees it — `decode(..., file_resolver=...)`, which propagates
+whatever the host raises. A wrapper such as FuncToWeb that builds the upload
+cycle owns that decision. The full cycle is in
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
-`IsPathFile(min_size=...)` and `max_size=...` **are** emitted, as `minSize` and
+`FileHint(min_size=...)` and `max_size=...` **are** emitted, as `minSize` and
 `maxSize`, and the widget weighs a chosen `File` against them so the bytes never
-move when the answer is already no. That is where its knowledge ends: a
-reference names a file the browser never saw, so it is not weighed, and neither
-is a default. The size that decides is the one `build()` measures on disk.
+move when the answer is already no. That is also where they stop: a reference
+names a file the browser never saw, so it is not weighed, and neither is a
+default. There is no second opinion further down — a byte bound that has to hold
+authoritatively belongs beside the storage that holds the bytes.
 
 ## Static data only
 

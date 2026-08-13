@@ -784,21 +784,23 @@ Invariants:
 
 ## File nodes
 
-Required: `kind`, `options`. `IsPathFile` on a `str` produces a `file` node. Its
+Required: `kind`, `options`. `FileHint` on a `str` produces a `file` node. Its
 value is a reference string the browser widget **generates locally** when the
 user picks a file — the file's name compressed to bare ASCII (15 characters at
 most), a UUID, and the file's lowercased extension. It is a reference, not a
-path: turning it into something the core can certify is the host's, through
-`decode(..., file_resolver=...)`. `IsPathFile(min_size=...)` and `max_size=...`
-travel as `minSize` / `maxSize`, in bytes, and they are **per file**, never a
-combined total. They belong to the node, so they arrive wherever a file node
-arrives — inside a list, a union branch or a nested struct alike.
+path, and it carries no bytes: turning it into something the function behind the
+schema can use is the host's, through `decode(..., file_resolver=...)`.
+`FileHint(min_size=...)` and `max_size=...` travel as `minSize` / `maxSize`, in
+bytes, and they are **per file**, never a combined total. They belong to the
+node, so they arrive wherever a file node arrives — inside a list, a union branch
+or a nested struct alike.
 
-What the browser does with them is a courtesy, not a verdict: a local `File`
-carries a `.size`, so the widget refuses one that already breaks a bound before
-any upload happens. A reference the host plants carries no bytes at all, so
-nothing weighs it there. Either way the core measures the real file when
-`build()` runs, which is the only check a hand-written HTTP call cannot skip.
+The browser is the only place they are ever applied: a local `File` carries a
+`.size`, so the widget refuses one that already breaks a bound before any upload
+happens. A reference the host plants carries no bytes at all, so nothing weighs
+it — not the widget, and not the core, which never opens a value. A bound that
+has to hold no matter what reaches the endpoint is the host's to enforce beside
+its storage; a hand-written HTTP call skips everything in this document.
 
 ```json
 {

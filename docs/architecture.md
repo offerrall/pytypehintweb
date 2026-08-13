@@ -96,16 +96,17 @@ is a shortcut — a *bare* `list[File]` becomes one `multiple` file node instead
 a list of single-file widgets — and it is chosen by an exact shape match, so it
 cannot capture anything wider.
 
-A **file** default is the one case where the check is split across layers, and
-deliberately. `checkPlan()` owns the shape a browser can see — a `str` for a
-single node, a `list[str]` for a `multiple` one, non-empty, extension-filtered,
-within the file-count bounds — and stops there, because existence, regular-file
-and byte size are not observable from a page. Those belong to `IsPathFile` in the
-core, which certifies a Python schema default *before* `plan_of()` runs, and
-certifies an opaque runtime reference *after* the host resolves it with
-`decode(..., file_resolver=...)`. The compiler then applies the default by
-calling the widget's public `setValue()`, so a default and a runtime assignment
-are one implementation rather than two.
+A **file** default is the one case where the check stops short of the value on
+purpose. `checkPlan()` owns the shape a browser can see — a `str` for a single
+node, a `list[str]` for a `multiple` one, non-empty, extension-filtered, within
+the file-count bounds — and stops there, because existence, regular-file and byte
+size are not observable from a page. They are not observable from the core
+either: `FileHint` reads the extension off the text and opens nothing, so those
+questions have no answer anywhere in this stack. They belong to the **host**,
+which is the only layer that knows where the bytes went, and it answers them in
+`decode(..., file_resolver=...)`. The compiler applies the default by calling the
+widget's public `setValue()`, so a default and a runtime assignment are one
+implementation rather than two.
 
 `checkPlan()` validates everything a hand-written expanded plan needs to be
 buildable — structure, the network boundary, and the semantics of the normalized
@@ -118,10 +119,11 @@ invariants that cannot affect runtime integrity (e.g. ordinary-range
 | Layer | Owns |
 | --- | --- |
 | `pytypehint` | core schema validity: positive `Rows` and `Step`, non-empty and non-repeating `Choices`, non-empty ranges, ordinary and slider ranges that admit a valid multiple of `MultipleOf`, choices consistent with their constraints, unions without repeated option types or homonym discriminators (dataclasses or enums that would share a `$type` name) |
-| `plan_of()` | web representability and the exact converted browser contract it emits: every value a JavaScript safe integer, portable patterns, control combinations that ask for different widgets, unique branch option ids (defense in depth — the core compiler rejects the homonym-discriminator collision the normal path can produce), nested objects with at least one field, exclusive integer bounds that still leave a value after integer conversion, sliders with both converted limits, sliders with a reachable valid position, converted defaults valid against their node including the slider `Step` grid |
+| `plan_of()` | web representability and the exact converted browser contract it emits: every value a JavaScript safe integer, portable patterns, control combinations that ask for different widgets, unique branch option ids (defense in depth — the core compiler rejects that collision on every path it compiles, a field's union and a list's items alike, so this one only ever fires on a shape assembled by hand), nested objects with at least one field, exclusive integer bounds that still leave a value after integer conversion, sliders with both converted limits, sliders with a reachable valid position, converted defaults valid against their node including the slider `Step` grid |
 | `normalizePlan()` | structural validity: every non-conditional property present (a missing one is `<path>: is required`), no unknown keys, types of values, the `hasDefault` / `default` pair, canonical scalar forms (a date value is a real calendar date, not merely the `YYYY-MM-DD` shape), and the structural shape invariants — non-empty field names, `optional` nodes only in list-item position, and `optional` / `enabled` field coherence |
 | `checkPlan()` | everything a hand-written expanded plan needs to be buildable — structure, network boundary, and the semantics of the normalized document: coherent ranges, choices against their constraints, reachable slider positions, unique and non-empty field names within each scope, `inline` transport only on object branches, `optional` nodes only as list items, unique branch values, and every plan default validated against the full constraints of its node. It does **not** restate schema-compiler invariants that cannot affect runtime integrity (e.g. ordinary-range `multipleOf` reachability) |
 | `schema.build()` | the values actually submitted |
+| the host application | everything about stored bytes: where an upload went, whether a reference still stands for something, whether it has expired, whether it is this caller's to redeem, and any byte-size guarantee that has to hold authoritatively. `decode(..., file_resolver=...)` is the seam, and an exception raised there propagates unchanged |
 
 The adapter does not restate the core's schema semantics for their own sake; it
 re-checks only the parts that become concrete once the plan is converted for the

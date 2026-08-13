@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Beltran Offerrall"}]
 requires-python = ">=3.11"
-dependencies = ["pytypehint>=0.0.7"]
+dependencies = ["pytypehint==1.0.0"]
 keywords = ["forms", "type-hints", "dataclasses", "schema", "web", "html"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -68,10 +68,7 @@ mypy_path = "src"
 explicit_package_bases = true
 files = ["src/pytypehintweb"]
 
-# The bundled demo is a showcase application (FastAPI glue and large hand-written
-# example tables), not the typed public API that py.typed vouches for. Consumers
-# import plan_of / decode / WebConfig / the type aliases, all of which type-check
-# clean; the demo stays out of the typed contract.
+
 [[tool.mypy.overrides]]
 module = "pytypehintweb.demo.*"
 ignore_errors = true

@@ -151,7 +151,7 @@ test("setValue rejects a non-ISO string, a number and a boolean", () => {
 });
 
 
-// A time is whole seconds only (the domain pytypehint 0.0.6 pins), and the shape
+// A time is whole seconds only (the domain the core pins), and the shape
 // bounds each field, so setValue rejects a sub-second fraction and an impossible
 // clock value alongside the wrong-shape strings.
 test("setValue rejects any time that is not a valid HH:MM:SS", () => {

@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, Literal
 
 from pytypehint import (
-    Choices, Description, IsPassword, IsPathFile, Label, Max, Min, MultipleOf,
+    Choices, Description, FileHint, IsPassword, Label, Max, Min, MultipleOf,
     OptionalToggle, Pattern, Placeholder, Rows, Slider, Step,
 )
 
@@ -452,35 +452,35 @@ def union_two_enums(
 @dataclass
 class Profile:
     name: Annotated[str, Min(1), Label("Name")]
-    avatar: Annotated[str, IsPathFile(extensions=(".jpg", ".png")), Label("Avatar")]
+    avatar: Annotated[str, FileHint(extensions=(".jpg", ".png")), Label("Avatar")]
 
 
 @dataclass
 class Album:
     title: Annotated[str, Min(1), Label("Title")]
-    photos: Annotated[list[Annotated[str, IsPathFile(extensions=(".jpg", ".png"))]],
+    photos: Annotated[list[Annotated[str, FileHint(extensions=(".jpg", ".png"))]],
                       Min(1), Max(4), Label("Photos")]
 
 
-def file_plain(document: Annotated[str, IsPathFile(), Label("Any file")]) -> None:
+def file_plain(document: Annotated[str, FileHint(), Label("Any file")]) -> None:
     pass
 
 
 def file_extensions(
-    document: Annotated[str, IsPathFile(extensions=(".pdf", ".png", ".jpg")),
+    document: Annotated[str, FileHint(extensions=(".pdf", ".png", ".jpg")),
                         Label("PDF or image")],
 ) -> None:
     pass
 
 
 def file_optional(
-    document: Annotated[str, IsPathFile(), Label("Optional file")] | None,
+    document: Annotated[str, FileHint(), Label("Optional file")] | None,
 ) -> None:
     pass
 
 
 def list_file(
-    documents: Annotated[list[Annotated[str, IsPathFile(extensions=(".pdf",))]],
+    documents: Annotated[list[Annotated[str, FileHint(extensions=(".pdf",))]],
                          Min(1), Max(3), Label("Between one and three PDFs")],
 ) -> None:
     pass
@@ -1100,13 +1100,13 @@ SECTIONS = [
      "form.",
      [
          ("file-plain", "Any file",
-          "IsPathFile with no extensions accepts any file. Pick one: the widget "
+          "FileHint with no extensions accepts any file. Pick one: the widget "
           "mints a reference (watch read()), the demo uploads the bytes under it, "
           "and only then does send enable. Try ?document=old.txt to prefill a "
           "current file.",
           file_plain, ()),
          ("file-extensions", "With extensions",
-          "IsPathFile(extensions=...) fills the input's accept attribute so the "
+          "FileHint(extensions=...) fills the input's accept attribute so the "
           "picker filters. A file whose extension slips through anyway mints no "
           "reference and shows the invalid message.",
           file_extensions, ()),

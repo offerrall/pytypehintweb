@@ -34,7 +34,7 @@ jobs:
         with:
           enable-cache: true
       # test extra = pytest + mypy; demo extra = fastapi + uvicorn, which
-      # test_demo.py imports at collection time. The runtime dep pytypehint>=0.0.6
+      # test_demo.py imports at collection time. The runtime dep pytypehint>=1.0.0
       # resolves from PyPI.
       - run: uv pip install --system -e ".[test,demo]"
       - run: mypy

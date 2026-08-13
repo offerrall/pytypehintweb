@@ -124,6 +124,53 @@ def test_architecture_lists_setvalue_in_the_widget_contract():
     assert "setValue" in text
 
 
+def test_no_document_keeps_the_old_file_atom_name():
+    # `IsPathFile` became `FileHint` in pytypehint 1.0.0 and there is no
+    # compatibility path back, so the old name in a document is always stale.
+    # The CHANGELOG is not scanned: its dated entries are a record of what was
+    # true then, and the Unreleased entry says so.
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in docs()
+        if "IsPathFile" in path.read_text(encoding="utf-8")
+        or "is_path_file" in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+FILESYSTEM_CLAIMS = ("file does not exist", "not a file", "file too small",
+                     "file too large")
+
+
+def test_no_document_claims_the_core_inspects_the_filesystem():
+    # The core reads an extension off the text and opens nothing, so none of
+    # these refusals can be raised any more. They were the backbone of the old
+    # file doctrine, which is why the phrases themselves are banned rather than
+    # left to be re-derived.
+    offenders = [
+        f"{path.relative_to(ROOT)}: {claim}"
+        for path in docs()
+        for claim in FILESYSTEM_CLAIMS
+        if claim in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
+def test_the_docs_place_stored_bytes_with_the_host():
+    # The replacement doctrine, asserted rather than assumed: a reference is
+    # opaque, the byte bounds are the browser's courtesy, and the host owns
+    # storage through the resolver.
+    limitations = (ROOT / "docs" / "limitations.md").read_text(encoding="utf-8")
+    python = (ROOT / "docs" / "python.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+
+    assert "A reference is not a path" in limitations
+    assert "carries no bytes" in python
+    assert "everything about stored bytes" in architecture
+
+
 def test_getting_started_uses_form_onchange():
     text = (ROOT / "docs" / "getting-started.md").read_text(encoding="utf-8")
 

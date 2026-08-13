@@ -144,12 +144,16 @@ The suites are written around the failures that would otherwise be silent:
   a user's pick does appear in both. `checkPlan()` polices the shape — `str` for
   a single node, `list[str]` for a multiple one, non-empty, extension-filtered,
   within `minFiles`/`maxFiles` — and the widget owns the semantics. Existence is
-  neither checked nor claimed in the browser: a Python schema default (a prefill
-  included) is certified by `IsPathFile` before a plan exists, so a missing path,
-  a directory, a wrong extension, a violated byte bound or one bad element of a
-  `list[File]` each fail at the core with no plan produced — every one of those
-  refusals is pinned to the core's own message, so a regression that moved one
-  into the adapter would show;
+  neither checked nor claimed anywhere: what a Python schema default (a prefill
+  included) still faces is the extension, checked by `FileHint` on the text, so a
+  wrong extension or one bad element of a `list[File]` fails at the core with no
+  plan produced, while a reference naming no local file compiles and renders like
+  any other. Both sides of that line are pinned — the refusal to the core's own
+  message, the acceptance to a plan that reaches the widget — so a regression
+  that moved a filesystem check into either half would show. What the byte bounds
+  do reach is the widget, and a star test drives a plan_of() plan through the
+  real modules to see a local pick refused for its size and a planted reference
+  accepted for having none;
 - which file compositions compile is a test, not a sentence: `File`,
   `File | None`, `list[File]`, `list[File | None]`, `list[File | int]`,
   `list[list[File]]`, a dataclass holding a file, a dataclass holding a
@@ -212,7 +216,7 @@ three jobs: **Python** (a `3.11`/`3.12`/`3.13` matrix running `mypy` and the
 suite — widgets, size budget and plan-doc examples — plus the headless-Chrome
 browser smoke and the theme-cascade page, the latter once per system
 preference), and **Packaging** (`uv build` then `uvx twine check`). Installing
-the project resolves its one runtime dependency, `pytypehint >= 0.0.6`, from PyPI.
+the project resolves its one runtime dependency, `pytypehint >= 1.0.0`, from PyPI.
 
 Releases are published from `.github/workflows/publish.yml`, which triggers only
 when a GitHub Release is *published*. It re-runs every check, builds the wheel and

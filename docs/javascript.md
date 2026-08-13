@@ -503,8 +503,9 @@ when even that is long, so a deep path or a URL does not spill across the field.
 It is presentation only — nothing else sees the shortened form. The reference must clear the same extension
 filter a minted one does — but **not** the size bounds: a reference names a file
 the browser never received, so there is no `.size` to weigh and none is invented
-or fetched. It is not "certified"; it is simply a value whose size is not
-observable here, and `build()` is where it gets measured. `isReady()` is `true`
+or fetched. Nothing downstream weighs it either: `build()` opens no files, so a
+reference's size is not observable anywhere in this pipeline, and a host that
+needs the bound to hold enforces it over its own storage. `isReady()` is `true`
 in that mode. **Replace** drops
 the held reference and brings the native choose control back — the same for a
 single file and a `multiple` list, where the input then resets the selection and
@@ -640,15 +641,16 @@ default lands in the same observable state as compiling without one and calling
 user's pick appears in all three. Recompiling the plan restores the default,
 which is how a form resets.
 
-**The browser provides no net for the reference/bytes coherence.** It mints a
-reference and checks only the extension; it never verifies that anything is stored
-behind it. The net is on the Python side: since `pytypehint 0.0.7` `IsPathFile`
-certifies the file itself, so a reference whose bytes were never stored fails at
-`build()` with `file does not exist` instead of travelling on as a broken promise.
-Getting from the browser's reference to a path the core can certify is the host's
-mapping, and `decode(..., file_resolver=...)` is where it plugs in. A wrapper such
-as [FuncToWeb](https://github.com/offerrall/FuncToWeb) that builds the upload
-cycle owns both halves: storing the bytes and resolving the reference to them.
+**Nobody but the host provides a net for the reference/bytes coherence.** The
+browser mints a reference and checks only the extension; it never verifies that
+anything is stored behind it. Neither does the Python side: `FileHint` checks the
+same extension on the same text, and `pytypehint 1.0.0` opens no files at all, so
+a reference whose bytes were never stored travels on as the plain string it is.
+The net has to be where the storage is. `decode(..., file_resolver=...)` is where
+it plugs in: the host maps the reference to whatever it kept, and raises from
+there when it cannot — the exception propagates unchanged. A wrapper such as
+[FuncToWeb](https://github.com/offerrall/FuncToWeb) that builds the upload cycle
+owns both halves: storing the bytes and resolving the reference to them.
 
 This is the general pattern for any value promised in the browser but completed
 outside it: the widget produces the intent and a local token for it, and the host

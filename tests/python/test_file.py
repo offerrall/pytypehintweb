@@ -5,36 +5,42 @@ from typing import Annotated
 import pytest
 
 from pytypehint import (
-    Choices, IsPassword, IsPathFile, Label, Max, Min, Pattern, Placeholder,
+    Choices, FileHint, IsPassword, Label, Max, Min, Pattern, Placeholder,
     Rows, signature_of, struct_of,
 )
 from pytypehintweb import WebConfig, decode, plan_of
 from pytypehintweb import plan as plan_module
 
 
+# A file field is a reference passing through four hands, and each of them
+# answers for a different thing:
+#
+#   the core        reads the extension off the text and nothing else. FileHint
+#                   declares min_size / max_size and never measures them; it
+#                   opens nothing, so existence, regular-file-ness and byte size
+#                   are not its business and no longer refuse a schema.
+#   pytypehintweb   turns the shape into a `file` node and carries extensions,
+#                   minSize and maxSize to the browser. It refuses only what
+#                   JSON and JavaScript cannot represent, and never touches
+#                   storage.
+#   the browser     filters a local pick by extension and weighs its File.size
+#                   against the bounds — the one case where bytes are known.
+#   the host        owns the bytes. Whether a reference exists, has expired,
+#                   belongs to this caller or is the right size is decided in
+#                   its file_resolver, the only seam the library offers it.
+#
+# A reference is not a path and carries no bytes, so no test here needs a real
+# file on disk: the values are plain reference strings, which is exactly what
+# crosses the wire.
+
 def _node(fn):
     return plan_of(fn)["fields"][0]["node"]
-
-
-def _stored(tmp_path, name, data=b"bytes"):
-    """A real file on disk, returned as the `str` path the core wants.
-
-    `IsPathFile` certifies the file itself now — extension, existence, regular
-    file and size — so any value that reaches a `Choices` list, a default or
-    `build()` has to point at something real. Tests that only inspect the plan
-    never need one: a plan is compiled from the shape, not from a value.
-    """
-    path = tmp_path / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
-
-    return str(path)
 
 
 # --- the file node ----------------------------------------------------------
 
 def test_plan_of_emits_a_single_file_node():
-    def f(value: Annotated[str, IsPathFile()]) -> None: ...
+    def f(value: Annotated[str, FileHint()]) -> None: ...
 
     assert _node(f) == {
         "kind": "file",
@@ -59,13 +65,13 @@ def test_plan_of_emits_a_single_file_node():
 
 
 def test_extensions_travel_lowercase_in_declaration_order():
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf", ".docx"))]) -> None: ...
+    def f(value: Annotated[str, FileHint(extensions=(".pdf", ".docx"))]) -> None: ...
 
     assert _node(f)["options"]["extensions"] == [".pdf", ".docx"]
 
 
 def test_the_invalid_message_comes_from_the_web_config():
-    def f(value: Annotated[str, IsPathFile()]) -> None: ...
+    def f(value: Annotated[str, FileHint()]) -> None: ...
 
     config = WebConfig(file_invalid_message="Wrong kind of file")
     node = plan_of(f, config=config)["fields"][0]["node"]
@@ -75,32 +81,27 @@ def test_the_invalid_message_comes_from_the_web_config():
 
 # --- deferred combinations --------------------------------------------------
 
-# The core allows each of these atoms beside IsPathFile; the adapter defers the
+# The core allows each of these atoms beside FileHint; the adapter defers the
 # combination until a real case asks for it, the same way it defers Float.slider.
-# The atoms are built lazily because one of them carries a value: a Choices over a
-# file has to name a file that exists, so it needs tmp_path.
-@pytest.mark.parametrize("name, make_atom", [
-    ("min", lambda tmp_path: Min(1)),
-    ("max", lambda tmp_path: Max(5)),
-    ("pattern", lambda tmp_path: Pattern(r"[a-z]+")),
-    ("choices",
-     lambda tmp_path: Choices(values=(_stored(tmp_path, "report.pdf"),))),
-    ("is_password", lambda tmp_path: IsPassword()),
-    ("rows", lambda tmp_path: Rows(3)),
-    ("placeholder", lambda tmp_path: Placeholder("Pick a file")),
+@pytest.mark.parametrize("name, atom", [
+    ("min", Min(1)),
+    ("max", Max(5)),
+    ("pattern", Pattern(r"[a-z]+")),
+    ("choices", Choices(values=("report.pdf",))),
+    ("is_password", IsPassword()),
+    ("rows", Rows(3)),
+    ("placeholder", Placeholder("Pick a file")),
 ])
-def test_ispathfile_with_another_str_atom_is_deferred(name, make_atom, tmp_path):
-    atom = make_atom(tmp_path)
-
-    def f(value: Annotated[str, IsPathFile(), atom]) -> None: ...
+def test_filehint_with_another_str_atom_is_deferred(name, atom):
+    def f(value: Annotated[str, FileHint(), atom]) -> None: ...
 
     with pytest.raises(TypeError,
-                       match=f"Str.{name} with IsPathFile is not supported yet"):
+                       match=f"Str.{name} with FileHint is not supported yet"):
         plan_of(f)
 
 
-def test_a_plain_ispathfile_carries_no_size_bounds():
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+def test_a_plain_filehint_carries_no_size_bounds():
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
 
     node = _node(f)
 
@@ -109,19 +110,22 @@ def test_a_plain_ispathfile_carries_no_size_bounds():
     assert node["options"]["maxSize"] is None
 
 
-# --- byte-size bounds -------------------------------------------------------
-
-# A restriction the browser cannot weigh must not stop the type from being
-# representable. The bounds travel on the node so a local File can be refused
-# before it is uploaded; a reference carries no bytes, so only the core's
-# verdict on the real file is final.
+# --- byte-size bounds: declared here, weighed only in the browser -----------
+#
+# FileHint(min_size=..., max_size=...) is a declaration. The core validates its
+# shape (a non-negative int, min <= max) and then never measures anything. The
+# bounds travel on the node so FileWidget can refuse a local File whose .size
+# already breaks one, before any upload. That is the only place a byte count is
+# ever known: a reference — a plan default, or one planted with setValue() —
+# carries no bytes, so nothing weighs it. An authoritative bound over stored
+# bytes belongs to the host, beside the storage it owns.
 
 @pytest.mark.parametrize("mark, expected", [
-    (IsPathFile(min_size=1), (1, None)),
-    (IsPathFile(max_size=1024), (None, 1024)),
-    (IsPathFile(min_size=1, max_size=1_000_000), (1, 1_000_000)),
-    (IsPathFile(min_size=0), (0, None)),
-    (IsPathFile(min_size=512, max_size=512), (512, 512)),
+    (FileHint(min_size=1), (1, None)),
+    (FileHint(max_size=1024), (None, 1024)),
+    (FileHint(min_size=1, max_size=1_000_000), (1, 1_000_000)),
+    (FileHint(min_size=0), (0, None)),
+    (FileHint(min_size=512, max_size=512), (512, 512)),
 ])
 def test_byte_size_bounds_travel_on_the_file_node(mark, expected):
     def f(value: Annotated[str, mark]) -> None: ...
@@ -132,7 +136,7 @@ def test_byte_size_bounds_travel_on_the_file_node(mark, expected):
 
 
 def test_the_size_messages_come_from_the_web_config():
-    def f(value: Annotated[str, IsPathFile(min_size=1, max_size=2)]) -> None: ...
+    def f(value: Annotated[str, FileHint(min_size=1, max_size=2)]) -> None: ...
 
     config = WebConfig(file_min_size_message="Under {value}",
                        file_max_size_message="Over {value}")
@@ -145,19 +149,48 @@ def test_the_size_messages_come_from_the_web_config():
 def test_a_size_bound_beyond_the_safe_integer_range_is_refused():
     # The plan is JSON read by JavaScript. The core has no reason to care, so
     # this is the one thing left to check here.
-    def f(value: Annotated[str, IsPathFile(max_size=2 ** 60)]) -> None: ...
+    def f(value: Annotated[str, FileHint(max_size=2 ** 60)]) -> None: ...
 
-    with pytest.raises(TypeError, match="IsPathFile.max_size"):
+    with pytest.raises(TypeError, match="FileHint.max_size"):
         plan_of(f)
 
 
 def test_the_bounds_survive_json():
-    def f(value: Annotated[str, IsPathFile(min_size=1, max_size=1024)]) -> None: ...
+    def f(value: Annotated[str, FileHint(min_size=1, max_size=1024)]) -> None: ...
 
     options = json.loads(json.dumps(_node(f)))["options"]
 
     assert options["minSize"] == 1
     assert options["maxSize"] == 1024
+
+
+@pytest.mark.parametrize("name, mark", [
+    ("under the minimum", FileHint(min_size=1_000_000)),
+    ("over the maximum", FileHint(max_size=1)),
+])
+def test_a_default_reference_is_never_weighed_against_the_bounds(name, mark):
+    # Nothing here can weigh a reference: it names bytes it does not carry. The
+    # core does not open it, the adapter does not either, and the browser shows
+    # it as the current file without a size beside it. The bound still travels,
+    # for the next local pick.
+    def f(value: Annotated[str, mark] = "already-stored.bin") -> None: ...
+
+    field = plan_of(f)["fields"][0]
+
+    assert field["default"] == "already-stored.bin"
+    assert field["node"]["options"]["minSize"] == mark.min_size
+    assert field["node"]["options"]["maxSize"] == mark.max_size
+
+
+def test_build_does_not_weigh_a_value_against_the_bounds_either():
+    # The same on the way back. A host that needs the guarantee enforces it over
+    # its own storage; the pipeline only carries the declaration.
+    def f(value: Annotated[str, FileHint(min_size=1000, max_size=2000)]) -> None: ...
+
+    schema = signature_of(f)
+
+    assert schema.build(decode(schema, {"value": "anything.bin"})) == {
+        "value": "anything.bin"}
 
 
 def _file_options(plan):
@@ -180,8 +213,8 @@ def _file_options(plan):
     return found
 
 
-_BOUNDED = Annotated[str, IsPathFile(extensions=(".pdf",),
-                                     min_size=10, max_size=2048)]
+_BOUNDED = Annotated[str, FileHint(extensions=(".pdf",),
+                                   min_size=10, max_size=2048)]
 
 
 @dataclass
@@ -213,10 +246,10 @@ def test_the_bounds_reach_every_file_node_however_composed(
     assert all(o["maxSize"] == 2048 for o in found), name
 
 
-def test_ispathfile_composes_with_field_label_and_description():
+def test_filehint_composes_with_field_label_and_description():
     # Label and Description are the field's, not the Str's, so they are not among
     # the deferred atoms: a labelled file field is fine.
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",)), Label("Resume")]) -> None: ...
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",)), Label("Resume")]) -> None: ...
 
     field = plan_of(f)["fields"][0]
 
@@ -224,21 +257,90 @@ def test_ispathfile_composes_with_field_label_and_description():
     assert field["node"]["kind"] == "file"
 
 
+# --- what the core still refuses --------------------------------------------
+#
+# One thing, and it is a text check: the extension. It applies to a default
+# while the schema compiles and to a value at build(), with the same words.
+
+def test_the_core_refuses_a_default_with_the_wrong_extension():
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]
+          = "note.txt") -> None: ...
+
+    with pytest.raises(Exception, match="not an accepted file type"):
+        plan_of(f)
+
+
+def test_the_core_refuses_a_default_that_is_not_a_string():
+    def f(value: Annotated[str, FileHint()] = 7) -> None: ...
+
+    with pytest.raises(Exception, match="expected str"):
+        plan_of(f)
+
+
+def test_the_core_names_the_offending_element_of_a_list_default():
+    def f(value: Annotated[list[Annotated[str, FileHint(extensions=(".pdf",))]],
+                           Label("Docs")] = ["ok.pdf", "note.txt"]) -> None: ...
+
+    with pytest.raises(Exception, match=r"\[1\]: not an accepted file type"):
+        plan_of(f)
+
+
+@pytest.mark.parametrize("name, mark, default", [
+    ("below the minimum", Min(2), ["one.pdf"]),
+    ("above the maximum", Max(1), ["one.pdf", "two.pdf"]),
+])
+def test_the_core_still_counts_a_list_default_against_its_bounds(
+        name, mark, default):
+    # A count is not a filesystem question, so this one survived 1.0.0 intact.
+    def f(value: Annotated[list[Annotated[str, FileHint()]],
+                           mark, Label("Docs")] = default) -> None: ...
+
+    with pytest.raises(Exception, match="too few items|too many items"):
+        plan_of(f)
+
+
+# --- what the core no longer refuses ----------------------------------------
+#
+# The line that moved in 1.0.0. A file value used to have to be a real local
+# file: `file does not exist`, `not a file`, `file too small` and `file too
+# large` refused the schema before a plan could exist. The core opens nothing
+# now, so a reference written in the host's own vocabulary compiles, renders and
+# travels — which is the point, since a host whose storage is an object store
+# never had a local path to offer in the first place.
+
+@pytest.mark.parametrize("name, reference", [
+    ("a name no local file answers to", "no-such-file.pdf"),
+    ("an object-store key", "records/2011/summer/ada.pdf"),
+    ("an absolute-looking path that is not there", "/var/records/2011.pdf"),
+])
+def test_a_reference_that_names_no_local_file_reaches_the_plan(name, reference):
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]
+          = reference) -> None: ...
+
+    field = plan_of(f)["fields"][0]
+
+    assert field["hasDefault"] is True
+    assert field["default"] == reference
+
+
+def test_a_directory_is_no_longer_a_special_case(tmp_path):
+    # `not a file` went with the rest: to the core the value is text, and this
+    # one happens to name a directory that exists. Nothing looks.
+    def f(value: Annotated[str, FileHint()] = str(tmp_path)) -> None: ...
+
+    assert plan_of(f)["fields"][0]["default"] == str(tmp_path)
+
+
 # --- a file default is an existing reference --------------------------------
 #
 # It means exactly what FileWidget.setValue() means: a reference the host
 # declares, shown as the current file and transported back untouched. It carries
 # no bytes and starts no upload.
-#
-# Every default here points at a real file, and not for the adapter's sake: the
-# core certifies a `IsPathFile` value while compiling the schema, so a default
-# that does not exist never reaches plan_of() at all. That is the seam described
-# in test_a_reference_the_core_cannot_certify_never_reaches_the_plan.
 
-def test_a_file_field_carries_its_default_reference_into_the_plan(tmp_path):
-    existing = _stored(tmp_path, "existing-doc.pdf")
+def test_a_file_field_carries_its_default_reference_into_the_plan():
+    existing = "records/existing-doc.pdf"
 
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",)),
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",)),
                            Label("Doc")] = existing) -> None: ...
 
     field = plan_of(f)["fields"][0]
@@ -252,7 +354,7 @@ def test_a_file_field_carries_its_default_reference_into_the_plan(tmp_path):
 def test_an_optional_file_accepts_a_none_default():
     # The off state of an optional file is the toggle; `None` is how the plan
     # spells it, exactly as for every other optional scalar.
-    def f(value: Annotated[str, IsPathFile(), Label("Doc")] | None = None) -> None: ...
+    def f(value: Annotated[str, FileHint(), Label("Doc")] | None = None) -> None: ...
 
     field = plan_of(f)["fields"][0]
 
@@ -262,10 +364,10 @@ def test_an_optional_file_accepts_a_none_default():
     assert field["enabled"] is False
 
 
-def test_an_optional_file_accepts_a_reference_default(tmp_path):
-    existing = _stored(tmp_path, "kept.pdf")
+def test_an_optional_file_accepts_a_reference_default():
+    existing = "records/kept.pdf"
 
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",)),
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",)),
                            Label("Doc")] | None = existing) -> None: ...
 
     field = plan_of(f)["fields"][0]
@@ -275,10 +377,10 @@ def test_an_optional_file_accepts_a_reference_default(tmp_path):
     assert field["enabled"] is True
 
 
-def test_a_list_of_files_carries_a_list_of_references(tmp_path):
-    existing = [_stored(tmp_path, "one.pdf"), _stored(tmp_path, "two.pdf")]
+def test_a_list_of_files_carries_a_list_of_references():
+    existing = ["records/one.pdf", "records/two.pdf"]
 
-    def f(value: Annotated[list[Annotated[str, IsPathFile()]],
+    def f(value: Annotated[list[Annotated[str, FileHint()]],
                            Label("Docs")] = existing) -> None: ...
 
     field = plan_of(f)["fields"][0]
@@ -289,17 +391,17 @@ def test_a_list_of_files_carries_a_list_of_references(tmp_path):
 
 
 def test_a_list_of_files_accepts_an_empty_default():
-    def f(value: Annotated[list[Annotated[str, IsPathFile()]],
+    def f(value: Annotated[list[Annotated[str, FileHint()]],
                            Label("Docs")] = []) -> None: ...
 
     assert plan_of(f)["fields"][0]["default"] == []
 
 
-def test_a_file_default_survives_json_as_plain_text(tmp_path):
-    existing = _stored(tmp_path, "report.pdf")
+def test_a_file_default_survives_json_as_plain_text():
+    existing = "records/report.pdf"
 
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))] = existing,
-          docs: Annotated[list[Annotated[str, IsPathFile()]],
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))] = existing,
+          docs: Annotated[list[Annotated[str, FileHint()]],
                           Label("Docs")] = []) -> None: ...
 
     plan = plan_of(f)
@@ -310,28 +412,31 @@ def test_a_file_default_survives_json_as_plain_text(tmp_path):
     assert "Path(" not in json.dumps(plan)
 
 
-def test_a_reference_the_core_cannot_certify_never_reaches_the_plan():
-    # The architectural seam, stated as a test. A Python default is certified by
-    # `IsPathFile` while the schema compiles, so plan_of() only ever sees one the
-    # core already accepted. A host whose references are not local paths — an
-    # object-store key, say — cannot smuggle one in through a schema default; it
-    # sets it on the widget with setValue() after mounting, and resolves it on
-    # the way back with decode(file_resolver=...).
-    with pytest.raises(Exception, match="file does not exist"):
-        def f(value: Annotated[str, IsPathFile()] = "bucket/key.pdf") -> None: ...
+def test_a_reference_in_the_hosts_own_vocabulary_can_be_a_schema_default():
+    # The architectural seam, stated as a test. A default used to have to be a
+    # local path, so a host whose references were object-store keys could not
+    # express a prefill in a schema at all and had to plant it with setValue()
+    # after mounting. Both roads are open now, and they are the same road: the
+    # plan default reaches the widget through setValue(), and the reference is
+    # redeemed on the way back with decode(file_resolver=...).
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]
+          = "s3://reports/9f3a1c.pdf") -> None: ...
 
-        plan_of(f)
+    field = plan_of(f)["fields"][0]
+
+    assert field["default"] == "s3://reports/9f3a1c.pdf"
+    assert field["node"]["kind"] == "file"
 
 
-def test_a_file_default_inside_a_dataclass_reaches_the_nested_node(tmp_path):
+def test_a_file_default_inside_a_dataclass_reaches_the_nested_node():
     # A nested default follows the same walk as any other initial value: the
     # object travels whole and the file inside it is not dropped on the way.
-    avatar = _stored(tmp_path, "ada.jpg")
+    avatar = "avatars/ada.jpg"
 
     @dataclass
     class Profile:
         name: Annotated[str, Label("Name")]
-        avatar: Annotated[str, IsPathFile(extensions=(".jpg",)), Label("Avatar")]
+        avatar: Annotated[str, FileHint(extensions=(".jpg",)), Label("Avatar")]
 
     def f(profile: Profile = Profile("Ada", avatar)) -> None: ...
 
@@ -341,12 +446,12 @@ def test_a_file_default_inside_a_dataclass_reaches_the_nested_node(tmp_path):
     assert field["node"]["kind"] == "object"
 
 
-def test_a_list_of_files_inside_a_dataclass_keeps_its_references(tmp_path):
-    photos = [_stored(tmp_path, "a.jpg"), _stored(tmp_path, "b.jpg")]
+def test_a_list_of_files_inside_a_dataclass_keeps_its_references():
+    photos = ["albums/a.jpg", "albums/b.jpg"]
 
     @dataclass
     class Album:
-        photos: Annotated[list[Annotated[str, IsPathFile(extensions=(".jpg",))]],
+        photos: Annotated[list[Annotated[str, FileHint(extensions=(".jpg",))]],
                           Label("Photos")]
 
     def f(album: Album = Album(photos)) -> None: ...
@@ -356,106 +461,8 @@ def test_a_list_of_files_inside_a_dataclass_keeps_its_references(tmp_path):
     assert field["default"] == {"photos": photos}
 
 
-# The core is the source of truth for a schema default, and it certifies before
-# plan_of() ever runs. These pin each refusal to the core, at its own message, so
-# a regression that moved one of them into the adapter would be visible.
-
-def test_the_core_refuses_a_default_that_names_no_file(tmp_path):
-    def f(value: Annotated[str, IsPathFile()] = "no-such-file.pdf") -> None: ...
-
-    with pytest.raises(Exception, match="file does not exist"):
-        plan_of(f)
-
-
-def test_the_core_refuses_a_default_that_is_a_directory(tmp_path):
-    directory = tmp_path / "folder"
-    directory.mkdir()
-
-    def f(value: Annotated[str, IsPathFile()] = str(directory)) -> None: ...
-
-    with pytest.raises(Exception, match="not a file"):
-        plan_of(f)
-
-
-def test_the_core_refuses_a_default_with_the_wrong_extension(tmp_path):
-    wrong_kind = _stored(tmp_path, "note.txt")
-
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]
-          = wrong_kind) -> None: ...
-
-    with pytest.raises(Exception, match="not an accepted file type"):
-        plan_of(f)
-
-
-def test_the_core_refuses_a_default_that_is_not_a_string(tmp_path):
-    def f(value: Annotated[str, IsPathFile()] = 7) -> None: ...
-
-    with pytest.raises(Exception, match="expected str"):
-        plan_of(f)
-
-
-def test_the_core_refuses_a_list_default_holding_one_missing_file(tmp_path):
-    present = _stored(tmp_path, "present.pdf")
-
-    def f(value: Annotated[list[Annotated[str, IsPathFile()]],
-                           Label("Docs")] = [present, "gone.pdf"]) -> None: ...
-
-    with pytest.raises(Exception, match=r"\[1\]: file does not exist"):
-        plan_of(f)
-
-
-@pytest.mark.parametrize("name, mark, size, message", [
-    ("min_size", IsPathFile(min_size=100), 1, "file too small"),
-    ("max_size", IsPathFile(max_size=100), 5000, "file too large"),
-])
-def test_the_core_checks_byte_sizes_on_a_default(
-        tmp_path, name, mark, size, message):
-    # A default is a real file the core weighs before the plan exists, so a
-    # form is never rendered around a value that already breaks its own bound.
-    too_wrong = _stored(tmp_path, f"{name}.pdf", b"x" * size)
-
-    def f(value: Annotated[str, mark] = too_wrong) -> None: ...
-
-    with pytest.raises(Exception, match=message):
-        plan_of(f)
-
-
-@pytest.mark.parametrize("name, size", [
-    ("exactly the minimum", 100),
-    ("exactly the maximum", 1000),
-    ("between the two", 500),
-])
-def test_a_default_inside_the_bounds_reaches_the_plan(tmp_path, name, size):
-    right_size = _stored(tmp_path, f"{size}.pdf", b"x" * size)
-
-    def f(value: Annotated[str, IsPathFile(min_size=100, max_size=1000)]
-          = right_size) -> None: ...
-
-    field = plan_of(f)["fields"][0]
-
-    assert field["hasDefault"] is True
-    assert field["default"] == right_size
-    assert field["node"]["options"]["minSize"] == 100
-    assert field["node"]["options"]["maxSize"] == 1000
-
-
-@pytest.mark.parametrize("name, bounds", [
-    ("below the minimum", (Min(2), [1])),
-    ("above the maximum", (Max(1), [2])),
-])
-def test_the_core_checks_list_bounds_on_a_file_default(tmp_path, name, bounds):
-    mark, counts = bounds
-    files = [_stored(tmp_path, f"{name[:5]}-{i}.pdf") for i in range(counts[0])]
-
-    def f(value: Annotated[list[Annotated[str, IsPathFile()]],
-                           mark, Label("Docs")] = files) -> None: ...
-
-    with pytest.raises(Exception, match="too few items|too many items"):
-        plan_of(f)
-
-
 def test_an_optional_file_without_a_default_is_fine():
-    def f(value: Annotated[str, IsPathFile(), Label("Optional file")] | None) -> None: ...
+    def f(value: Annotated[str, FileHint(), Label("Optional file")] | None) -> None: ...
 
     field = plan_of(f)["fields"][0]
 
@@ -470,7 +477,7 @@ def test_a_generated_reference_travels_untouched_through_decode():
     # The widget mints a reference shaped like <name>-<uuid>.<ext>; on the wire it
     # is a plain string. decode prepares, it does not validate, so with no
     # resolver the reference reaches the core exactly as it was typed into JSON.
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
 
     schema = signature_of(f)
     reference = "informe-anual-550e8400-e29b-41d4-a716-446655440000.pdf"
@@ -478,16 +485,43 @@ def test_a_generated_reference_travels_untouched_through_decode():
     assert decode(schema, {"value": reference}) == {"value": reference}
 
 
-def test_the_host_resolver_is_what_makes_a_reference_buildable(tmp_path):
-    # pytypehint 0.0.7 certifies the file itself — existence, regular file, size —
-    # so a reference only becomes buildable once the host maps it to wherever it
-    # actually stored the bytes. That mapping is decode()'s file_resolver, and it
-    # receives the reference byte-identical.
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+def test_build_accepts_a_reference_no_resolver_ever_redeemed():
+    # The guarantee that went away, written down as what it became. build() used
+    # to refuse a reference whose bytes were never stored, so a host that forgot
+    # to wire its resolver found out here. Nothing between the browser and the
+    # core knows what storage means any more, so the reference builds into the
+    # plain string it always was. Refusing it is the host's call, made in the
+    # file_resolver — see the tests below.
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
+
+    schema = signature_of(f)
+
+    assert schema.build(decode(schema, {"value": "never-uploaded-1234.pdf"})) == {
+        "value": "never-uploaded-1234.pdf"}
+
+
+def test_build_still_filters_the_reference_by_extension():
+    # The extension is a filter for honest mistakes, applied by the core on the
+    # way in exactly as the widget applies it on the way out.
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
+
+    schema = signature_of(f)
+
+    with pytest.raises(Exception, match="not an accepted file type"):
+        schema.build(decode(schema, {"value": "note.txt"}))
+
+
+# --- the resolver is the host's seam ----------------------------------------
+
+def test_the_resolver_receives_the_reference_byte_identical():
+    # The mapping the host owns: reference in, whatever the host wants to hand
+    # the pipeline out. It is called once, with the reference exactly as the
+    # browser minted it, and its answer continues as the value.
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
 
     schema = signature_of(f)
     reference = "informe-anual-550e8400-e29b-41d4-a716-446655440000.pdf"
-    stored = _stored(tmp_path, "informe-anual.pdf")
+    stored = "/srv/uploads/informe-anual.pdf"
 
     seen = []
 
@@ -501,29 +535,81 @@ def test_the_host_resolver_is_what_makes_a_reference_buildable(tmp_path):
     assert schema.build(prepared) == {"value": stored}
 
 
-def test_build_rejects_a_reference_whose_bytes_were_never_stored():
-    # The counterpart: an unresolved reference is refused rather than accepted as
-    # a promise. A host that mints references and never uploads now finds out at
-    # build() instead of shipping a string that points at nothing.
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
+def test_a_resolver_that_refuses_a_reference_raises_through_decode():
+    # How a host says no now that the core has stopped saying it. decode() does
+    # not catch: the host's own exception — unknown, expired, not yours — reaches
+    # the caller unchanged, with its own type and its own message.
+    class UnknownUpload(LookupError):
+        pass
+
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
+
+    def resolve(reference):
+        raise UnknownUpload(f"no such upload: {reference}")
+
+    with pytest.raises(UnknownUpload, match="no such upload: ghost.pdf"):
+        decode(signature_of(f), {"value": "ghost.pdf"},
+               file_resolver=resolve)
+
+
+def test_a_resolver_refusal_inside_a_list_stops_the_walk():
+    # The same, reached through a list: nothing swallows it and nothing carries
+    # on to the next element with a half-decoded object.
+    class UnknownUpload(LookupError):
+        pass
+
+    def f(value: Annotated[list[Annotated[str, FileHint()]],
+                           Label("Docs")]) -> None: ...
+
+    seen = []
+
+    def resolve(reference):
+        seen.append(reference)
+
+        if reference == "gone.pdf":
+            raise UnknownUpload(reference)
+
+        return f"/srv/{reference}"
+
+    with pytest.raises(UnknownUpload):
+        decode(signature_of(f), {"value": ["here.pdf", "gone.pdf", "next.pdf"]},
+               file_resolver=resolve)
+
+    assert seen == ["here.pdf", "gone.pdf"]          # stopped where it failed
+
+
+def test_the_core_reads_the_extension_of_what_the_resolver_returned():
+    # The resolver's answer is the value that continues, so it faces the one
+    # check the core still makes. A host answering with a bare key fails at
+    # build() — not because bytes are missing, which nothing here can tell, but
+    # because the resolved text carries no accepted extension.
+    def f(value: Annotated[str, FileHint(extensions=(".pdf",))]) -> None: ...
 
     schema = signature_of(f)
-
-    with pytest.raises(Exception, match="file does not exist"):
-        schema.build(decode(schema, {"value": "never-uploaded-1234.pdf"}))
-
-
-def test_build_still_filters_the_reference_by_extension(tmp_path):
-    # The extension is a filter for honest mistakes, applied by the core on the
-    # way in exactly as the widget mints it. The file is real, so the refusal is
-    # demonstrably about the extension and not about the bytes being missing.
-    def f(value: Annotated[str, IsPathFile(extensions=(".pdf",))]) -> None: ...
-
-    schema = signature_of(f)
-    wrong_kind = _stored(tmp_path, "note.txt")
+    prepared = decode(schema, {"value": "report.pdf"},
+                      file_resolver=lambda reference: "s3://bucket/9f3a1c")
 
     with pytest.raises(Exception, match="not an accepted file type"):
-        schema.build(decode(schema, {"value": wrong_kind}))
+        schema.build(prepared)
+
+    # An answer that keeps an accepted extension goes through, which is why the
+    # demo resolves to a path and not to a bare key.
+    kept = decode(schema, {"value": "report.pdf"},
+                  file_resolver=lambda reference: "s3://bucket/9f3a1c.pdf")
+
+    assert schema.build(kept) == {"value": "s3://bucket/9f3a1c.pdf"}
+
+
+def test_a_resolver_answer_is_not_weighed_against_the_byte_bounds():
+    # Whatever the host answers, it is text to everything downstream. The bounds
+    # were the browser's business and stayed there.
+    def f(value: Annotated[str, FileHint(min_size=10_000)]) -> None: ...
+
+    schema = signature_of(f)
+    prepared = decode(schema, {"value": "tiny.bin"},
+                      file_resolver=lambda reference: "/srv/tiny.bin")
+
+    assert schema.build(prepared) == {"value": "/srv/tiny.bin"}
 
 
 # --- unions -----------------------------------------------------------------
@@ -532,16 +618,29 @@ def test_str_and_file_share_the_option_id_str_and_the_core_rejects_the_union():
     # A file is a Str, so option_id() is "str" for both branches. str | file is
     # two branches with the same option id: the core rejects it while compiling
     # the field (duplicate option types), before plan_of ever runs.
-    def f(value: str | Annotated[str, IsPathFile()]) -> None: ...
+    def f(value: str | Annotated[str, FileHint()]) -> None: ...
 
     with pytest.raises(ValueError, match="duplicate option types"):
+        signature_of(f)
+
+
+def test_a_list_of_file_or_str_is_rejected_by_the_core_as_well():
+    # New in pytypehint 1.0.0: the identity rule reaches inside lists too, in its
+    # own words rather than the field's. list[File | str] used to compile and
+    # arrive here, where the adapter's own guard refused it; the collision is now
+    # named earlier and better, so the adapter's guard is defense in depth for
+    # shapes assembled off the compiler's path (see test_adapter_hardening).
+    def f(value: Annotated[list[Annotated[str, FileHint()] | str],
+                           Label("V")]) -> None: ...
+
+    with pytest.raises(ValueError, match="both compile to str"):
         signature_of(f)
 
 
 def test_a_file_in_a_sane_union_compiles_with_the_str_branch_id():
     # file | int: distinct transports (string vs number) and distinct option ids
     # ("str" vs "int"), so the union is sound.
-    def f(value: Annotated[str, IsPathFile()] | int) -> None: ...
+    def f(value: Annotated[str, FileHint()] | int) -> None: ...
 
     node = _node(f)
 
@@ -555,7 +654,7 @@ def test_a_file_in_a_sane_union_compiles_with_the_str_branch_id():
 def test_a_file_collides_with_a_date_on_transport_and_travels_wrapped():
     from datetime import date
 
-    def f(value: Annotated[str, IsPathFile()] | date) -> None: ...
+    def f(value: Annotated[str, FileHint()] | date) -> None: ...
 
     modes = {b["value"]: b["mode"] for b in _node(f)["branches"]}
 
@@ -565,7 +664,7 @@ def test_a_file_collides_with_a_date_on_transport_and_travels_wrapped():
 # --- multi-file: list[File] is one multiple file node -----------------------
 
 def test_a_list_of_files_is_one_multiple_file_node():
-    def f(value: Annotated[list[Annotated[str, IsPathFile(extensions=(".pdf",))]],
+    def f(value: Annotated[list[Annotated[str, FileHint(extensions=(".pdf",))]],
                            Min(1), Max(3), Label("Attachments")]) -> None: ...
 
     node = _node(f)
@@ -578,7 +677,7 @@ def test_a_list_of_files_is_one_multiple_file_node():
 
 
 def test_a_list_of_files_without_bounds_has_null_file_counts():
-    def f(value: Annotated[list[Annotated[str, IsPathFile()]], Label("Docs")]) -> None: ...
+    def f(value: Annotated[list[Annotated[str, FileHint()]], Label("Docs")]) -> None: ...
 
     options = _node(f)["options"]
 
@@ -598,11 +697,11 @@ def test_a_list_of_files_without_bounds_has_null_file_counts():
 @dataclass
 class Attachment:
     title: Annotated[str, Label("Title")]
-    document: Annotated[str, IsPathFile(), Label("Doc")]
+    document: Annotated[str, FileHint(), Label("Doc")]
 
 
 def test_a_list_of_optional_files_is_a_list_of_optional_nodes():
-    def f(value: Annotated[list[Annotated[str, IsPathFile()] | None],
+    def f(value: Annotated[list[Annotated[str, FileHint()] | None],
                            Label("Docs")]) -> None: ...
 
     node = _node(f)
@@ -613,7 +712,7 @@ def test_a_list_of_optional_files_is_a_list_of_optional_nodes():
 
 
 def test_a_list_of_file_or_int_is_a_list_of_choices():
-    def f(value: Annotated[list[Annotated[str, IsPathFile()] | int],
+    def f(value: Annotated[list[Annotated[str, FileHint()] | int],
                            Label("Docs")]) -> None: ...
 
     node = _node(f)
@@ -628,7 +727,7 @@ def test_a_nested_list_of_files_nests_the_nodes():
     # The inner list is itself a bare list[File], so the shortcut applies there
     # and the outer list holds one multiple file node per row. The structure is
     # not flattened: the outer list is still a list.
-    def f(value: Annotated[list[list[Annotated[str, IsPathFile()]]],
+    def f(value: Annotated[list[list[Annotated[str, FileHint()]]],
                            Label("Docs")]) -> None: ...
 
     node = _node(f)
@@ -653,7 +752,7 @@ def test_a_file_two_levels_below_a_list_still_compiles():
     # Nothing counts depth: a struct inside a list holding a list of files.
     @dataclass
     class Bundle:
-        docs: Annotated[list[Annotated[str, IsPathFile()]], Label("Docs")]
+        docs: Annotated[list[Annotated[str, FileHint()]], Label("Docs")]
 
     def f(value: Annotated[list[Bundle], Label("Bundles")]) -> None: ...
 
@@ -667,13 +766,13 @@ def test_no_rule_rejects_a_shape_merely_for_holding_a_file():
     # raise "a file inside a list is only supported as a plain list[File]".
     @dataclass
     class Holder:
-        doc: Annotated[str, IsPathFile(), Label("Doc")]
+        doc: Annotated[str, FileHint(), Label("Doc")]
 
-    def optional_items(v: Annotated[list[Annotated[str, IsPathFile()] | None],
+    def optional_items(v: Annotated[list[Annotated[str, FileHint()] | None],
                                     Label("V")]) -> None: ...
-    def union_items(v: Annotated[list[Annotated[str, IsPathFile()] | int],
+    def union_items(v: Annotated[list[Annotated[str, FileHint()] | int],
                                  Label("V")]) -> None: ...
-    def nested(v: Annotated[list[list[Annotated[str, IsPathFile()]]],
+    def nested(v: Annotated[list[list[Annotated[str, FileHint()]]],
                             Label("V")]) -> None: ...
     def structs(v: Annotated[list[Holder], Label("V")]) -> None: ...
 
@@ -689,24 +788,24 @@ def test_the_supported_file_compositions_all_compile():
     # Every shape the documentation claims, as a test rather than a sentence.
     @dataclass
     class Profile:
-        avatar: Annotated[str, IsPathFile(), Label("Avatar")]
+        avatar: Annotated[str, FileHint(), Label("Avatar")]
 
     @dataclass
     class Album:
-        photos: Annotated[list[Annotated[str, IsPathFile()]], Label("Photos")]
+        photos: Annotated[list[Annotated[str, FileHint()]], Label("Photos")]
 
-    def one(value: Annotated[str, IsPathFile(), Label("V")]) -> None: ...
-    def optional(value: Annotated[str, IsPathFile(), Label("V")] | None) -> None: ...
-    def many(value: Annotated[list[Annotated[str, IsPathFile()]],
+    def one(value: Annotated[str, FileHint(), Label("V")]) -> None: ...
+    def optional(value: Annotated[str, FileHint(), Label("V")] | None) -> None: ...
+    def many(value: Annotated[list[Annotated[str, FileHint()]],
                               Label("V")]) -> None: ...
     def in_struct(value: Profile) -> None: ...
     def many_in_struct(value: Album) -> None: ...
-    def in_union(value: Annotated[str, IsPathFile()] | int) -> None: ...
-    def list_optional(value: Annotated[list[Annotated[str, IsPathFile()] | None],
+    def in_union(value: Annotated[str, FileHint()] | int) -> None: ...
+    def list_optional(value: Annotated[list[Annotated[str, FileHint()] | None],
                                        Label("V")]) -> None: ...
-    def list_union(value: Annotated[list[Annotated[str, IsPathFile()] | int],
+    def list_union(value: Annotated[list[Annotated[str, FileHint()] | int],
                                     Label("V")]) -> None: ...
-    def list_list(value: Annotated[list[list[Annotated[str, IsPathFile()]]],
+    def list_list(value: Annotated[list[list[Annotated[str, FileHint()]]],
                                    Label("V")]) -> None: ...
     def list_struct(value: Annotated[list[Attachment], Label("V")]) -> None: ...
 
@@ -743,50 +842,46 @@ def _recording_resolver():
     return seen, resolve
 
 
-def test_decode_resolves_a_file_inside_a_list_of_optionals(tmp_path):
-    a = _stored(tmp_path, "a.pdf")
-
-    def f(value: Annotated[list[Annotated[str, IsPathFile()] | None],
+def test_decode_resolves_a_file_inside_a_list_of_optionals():
+    def f(value: Annotated[list[Annotated[str, FileHint()] | None],
                            Label("V")]) -> None: ...
 
     seen, resolve = _recording_resolver()
-    out = decode(signature_of(f), {"value": [a, None]}, file_resolver=resolve)
+    out = decode(signature_of(f), {"value": ["a.pdf", None]},
+                 file_resolver=resolve)
 
-    assert seen == [a]                       # None never reaches the resolver
-    assert out == {"value": [f"/resolved/{a}", None]}
+    assert seen == ["a.pdf"]                 # None never reaches the resolver
+    assert out == {"value": ["/resolved/a.pdf", None]}
 
 
-def test_decode_resolves_only_the_file_branch_of_a_mixed_list(tmp_path):
-    a = _stored(tmp_path, "a.pdf")
-
-    def f(value: Annotated[list[Annotated[str, IsPathFile()] | int],
+def test_decode_resolves_only_the_file_branch_of_a_mixed_list():
+    def f(value: Annotated[list[Annotated[str, FileHint()] | int],
                            Label("V")]) -> None: ...
 
     seen, resolve = _recording_resolver()
-    out = decode(signature_of(f), {"value": [a, 7]}, file_resolver=resolve)
+    out = decode(signature_of(f), {"value": ["a.pdf", 7]}, file_resolver=resolve)
 
-    assert seen == [a]
-    assert out == {"value": [f"/resolved/{a}", 7]}
+    assert seen == ["a.pdf"]
+    assert out == {"value": ["/resolved/a.pdf", 7]}
 
 
-def test_decode_resolves_every_file_of_a_nested_list_in_order(tmp_path):
-    a, b = _stored(tmp_path, "a.pdf"), _stored(tmp_path, "b.pdf")
-
-    def f(value: Annotated[list[list[Annotated[str, IsPathFile()]]],
+def test_decode_resolves_every_file_of_a_nested_list_in_order():
+    def f(value: Annotated[list[list[Annotated[str, FileHint()]]],
                            Label("V")]) -> None: ...
 
     seen, resolve = _recording_resolver()
-    out = decode(signature_of(f), {"value": [[a], [b, a]]}, file_resolver=resolve)
+    out = decode(signature_of(f), {"value": [["a.pdf"], ["b.pdf", "a.pdf"]]},
+                 file_resolver=resolve)
 
-    assert seen == [a, b, a]                 # once per reference, in order
-    assert out == {"value": [[f"/resolved/{a}"],
-                             [f"/resolved/{b}", f"/resolved/{a}"]]}
+    assert seen == ["a.pdf", "b.pdf", "a.pdf"]   # once per reference, in order
+    assert out == {"value": [["/resolved/a.pdf"],
+                             ["/resolved/b.pdf", "/resolved/a.pdf"]]}
 
 
 def test_a_list_of_structs_with_a_file_round_trips_through_build(tmp_path):
     # The whole way round for the shape that used to be refused: plan, transport,
     # decode with a resolver, and the core building the real objects.
-    a, b = _stored(tmp_path, "a.pdf"), _stored(tmp_path, "b.pdf")
+    a, b = "uploads/a.pdf", "uploads/b.pdf"
 
     def f(items: Annotated[list[Attachment], Label("Items")]) -> None: ...
 
@@ -794,8 +889,6 @@ def test_a_list_of_structs_with_a_file_round_trips_through_build(tmp_path):
     body = {"items": [{"title": "one", "document": a},
                       {"title": "two", "document": b}]}
 
-    # build() certifies the resolved path, so the host has to answer with a real
-    # one — the same _Storage stand-in the star round trip uses.
     storage = _Storage(tmp_path)
     built = schema.build(decode(schema, json.loads(json.dumps(body)),
                                 file_resolver=storage.resolve))
@@ -806,15 +899,15 @@ def test_a_list_of_structs_with_a_file_round_trips_through_build(tmp_path):
         storage.path_of(a), storage.path_of(b)]
 
 
-def test_a_deep_default_survives_json_and_carries_no_path_objects(tmp_path):
-    a, b = _stored(tmp_path, "a.pdf"), _stored(tmp_path, "b.pdf")
+def test_a_deep_default_survives_json_and_carries_no_path_objects():
+    a, b = "uploads/a.pdf", "uploads/b.pdf"
 
     def f(
-        holes: Annotated[list[Annotated[str, IsPathFile()] | None],
+        holes: Annotated[list[Annotated[str, FileHint()] | None],
                          Label("H")] = [a, None],
-        mixed: Annotated[list[Annotated[str, IsPathFile()] | int],
+        mixed: Annotated[list[Annotated[str, FileHint()] | int],
                          Label("M")] = [a, 7],
-        nested: Annotated[list[list[Annotated[str, IsPathFile()]]],
+        nested: Annotated[list[list[Annotated[str, FileHint()]]],
                           Label("N")] = [[a], [b]],
         rows: Annotated[list[Attachment], Label("R")] = [Attachment("t", a)],
     ) -> None: ...
@@ -834,8 +927,8 @@ def test_a_deep_default_survives_json_and_carries_no_path_objects(tmp_path):
     assert defaults["mixed"][1] == {"branch": 1, "value": 7}
 
 
-def test_a_list_of_references_round_trips_through_build(tmp_path):
-    def f(value: Annotated[list[Annotated[str, IsPathFile(extensions=(".pdf",))]],
+def test_a_list_of_references_round_trips_through_build():
+    def f(value: Annotated[list[Annotated[str, FileHint(extensions=(".pdf",))]],
                            Label("Docs")]) -> None: ...
 
     schema = signature_of(f)
@@ -845,7 +938,7 @@ def test_a_list_of_references_round_trips_through_build(tmp_path):
     # Untouched without a resolver, one call per reference and in order with one.
     assert decode(schema, {"value": references}) == {"value": references}
 
-    stored = {reference: _stored(tmp_path, f"doc-{index}.pdf")
+    stored = {reference: f"/srv/doc-{index}.pdf"
               for index, reference in enumerate(references)}
 
     seen = []
@@ -865,16 +958,16 @@ def test_a_list_of_references_round_trips_through_build(tmp_path):
 @dataclass
 class User:
     name: Annotated[str, Label("Name")]
-    avatar: Annotated[str, IsPathFile(extensions=(".jpg",)), Label("Avatar")]
+    avatar: Annotated[str, FileHint(extensions=(".jpg",)), Label("Avatar")]
 
 
 @dataclass
 class Gallery:
-    photos: Annotated[list[Annotated[str, IsPathFile(extensions=(".jpg",))]],
+    photos: Annotated[list[Annotated[str, FileHint(extensions=(".jpg",))]],
                       Label("Photos")]
 
 
-def _file_star(node, tmp_path, obj, ops):
+def _file_star_result(node, tmp_path, obj, ops):
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(json.dumps(plan_of(obj), separators=(",", ":")),
                          encoding="utf-8")
@@ -882,31 +975,33 @@ def _file_star(node, tmp_path, obj, ops):
     ops_path = tmp_path / "ops.json"
     ops_path.write_text(json.dumps(ops), encoding="utf-8")
 
-    return node("file-star-runner.mjs", str(plan_path), str(ops_path))["read"]
+    return node("file-star-runner.mjs", str(plan_path), str(ops_path))
+
+
+def _file_star(node, tmp_path, obj, ops):
+    return _file_star_result(node, tmp_path, obj, ops)["read"]
 
 
 class _Storage:
-    """The host's side of the star: it stores bytes and maps references to paths.
+    """The host's side of the star: it maps references to whatever it stores.
 
-    The browser mints an opaque reference and the core certifies a real file, so
-    something has to sit between them. That something is the host, and the seam
-    the library gives it is `decode(..., file_resolver=...)`. This stands in for
-    it: every reference it is asked for is recorded, so the tests can still prove
-    the reference crossed byte-identical, and answers with a real path.
+    The browser mints an opaque reference and the core only ever reads an
+    extension off it, so something has to know where the bytes went. That
+    something is the host, and the seam the library gives it is
+    `decode(..., file_resolver=...)`. This stands in for it: every reference it
+    is asked for is recorded, so the tests can prove the reference crossed
+    byte-identical, and it answers with the path it would have stored under. It
+    touches no disk, because nothing downstream of it does either.
     """
 
     def __init__(self, tmp_path):
         self.root = tmp_path / "storage"
-        self.root.mkdir(parents=True, exist_ok=True)
         self.seen = []
 
     def resolve(self, reference):
         self.seen.append(reference)
 
-        path = self.root / reference.replace("/", "_")
-        path.write_bytes(b"bytes")
-
-        return str(path)
+        return self.path_of(reference)
 
     def path_of(self, reference):
         return str(self.root / reference.replace("/", "_"))
@@ -926,11 +1021,11 @@ def _build(schema, read, storage):
 
 def test_a_single_file_prefill_arrives_as_the_widgets_current_reference(
         node, tmp_path):
-    avatar = _stored(tmp_path, "ada.jpg")
+    avatar = "avatars/ada.jpg"
 
     def prefilled(
         name: Annotated[str, Label("Name")] = "Ada",
-        avatar_: Annotated[str, IsPathFile(extensions=(".jpg",)),
+        avatar_: Annotated[str, FileHint(extensions=(".jpg",)),
                            Label("Avatar")] = avatar,
     ) -> None: ...
 
@@ -940,10 +1035,10 @@ def test_a_single_file_prefill_arrives_as_the_widgets_current_reference(
 
 
 def test_a_multi_file_prefill_arrives_in_order(node, tmp_path):
-    photos = [_stored(tmp_path, "a.jpg"), _stored(tmp_path, "b.jpg")]
+    photos = ["albums/a.jpg", "albums/b.jpg"]
 
     def prefilled(
-        photos_: Annotated[list[Annotated[str, IsPathFile(extensions=(".jpg",))]],
+        photos_: Annotated[list[Annotated[str, FileHint(extensions=(".jpg",))]],
                            Label("Photos")] = photos,
     ) -> None: ...
 
@@ -952,12 +1047,12 @@ def test_a_multi_file_prefill_arrives_in_order(node, tmp_path):
 
 def test_a_nested_file_prefill_reaches_the_widget_inside_the_struct(
         node, tmp_path):
-    avatar = _stored(tmp_path, "nested.jpg")
+    avatar = "avatars/nested.jpg"
 
     @dataclass
     class Inner:
         name: Annotated[str, Label("Name")]
-        avatar: Annotated[str, IsPathFile(extensions=(".jpg",)), Label("Avatar")]
+        avatar: Annotated[str, FileHint(extensions=(".jpg",)), Label("Avatar")]
 
     def prefilled(profile: Inner = Inner("Ada", avatar)) -> None: ...
 
@@ -969,7 +1064,7 @@ def test_a_nested_file_prefill_reaches_the_widget_inside_the_struct(
 def test_an_optional_file_prefilled_with_none_arrives_switched_off(
         node, tmp_path):
     def prefilled(
-        doc: Annotated[str, IsPathFile(), Label("Doc")] | None = None,
+        doc: Annotated[str, FileHint(), Label("Doc")] | None = None,
     ) -> None: ...
 
     assert _file_star(node, tmp_path, prefilled, {}) == {"doc": None}
@@ -977,11 +1072,11 @@ def test_an_optional_file_prefilled_with_none_arrives_switched_off(
 
 def test_a_list_prefill_inside_a_dataclass_reaches_the_multiple_widget(
         node, tmp_path):
-    photos = [_stored(tmp_path, "p1.jpg"), _stored(tmp_path, "p2.jpg")]
+    photos = ["albums/p1.jpg", "albums/p2.jpg"]
 
     @dataclass
     class Gallery2:
-        photos: Annotated[list[Annotated[str, IsPathFile(extensions=(".jpg",))]],
+        photos: Annotated[list[Annotated[str, FileHint(extensions=(".jpg",))]],
                           Label("Photos")]
 
     def prefilled(gallery: Gallery2 = Gallery2(photos)) -> None: ...
@@ -990,33 +1085,34 @@ def test_a_list_prefill_inside_a_dataclass_reaches_the_multiple_widget(
         "gallery": {"photos": photos}}
 
 
-@pytest.mark.parametrize("name, make", [
-    ("missing", lambda tmp: "prefill-does-not-exist.pdf"),
-    ("directory", lambda tmp: str(tmp)),
+@pytest.mark.parametrize("name, reference", [
+    ("a key with no local counterpart", "s3://records/9f3a1c.pdf"),
+    ("a name nothing on this machine answers to", "long-gone.pdf"),
 ])
-def test_a_prefill_the_core_cannot_certify_never_produces_a_plan(
-        tmp_path, name, make):
-    # The point of the strict route: a prefill is a temporary default, so it gets
-    # the same certification. A path the core cannot certify fails *before* the
-    # plan exists, which is what stops the form from showing a file that is not
-    # there. There is nothing to work around here.
-    value = make(tmp_path)
-
-    def prefilled(doc: Annotated[str, IsPathFile(), Label("Doc")] = value) -> None: ...
-
-    with pytest.raises(Exception, match="file does not exist|not a file"):
-        plan_of(prefilled)
-
-
-def test_a_list_prefill_with_one_missing_element_never_produces_a_plan(tmp_path):
-    present = _stored(tmp_path, "here.pdf")
-
+def test_a_prefill_the_host_alone_understands_reaches_the_widget(
+        node, tmp_path, name, reference):
+    # What the strict route used to forbid. A prefill is a temporary default, so
+    # it used to need a real local file and a host with an object store could not
+    # render an edit form at all. The plan carries the reference now and the
+    # widget shows it as the current file; whether it still stands for anything
+    # is answered later, by the host's resolver.
     def prefilled(
-        docs: Annotated[list[Annotated[str, IsPathFile()]],
-                        Label("Docs")] = [present, "gone.pdf"],
+        doc: Annotated[str, FileHint(extensions=(".pdf",)),
+                       Label("Doc")] = reference,
     ) -> None: ...
 
-    with pytest.raises(Exception, match="file does not exist"):
+    assert _file_star(node, tmp_path, prefilled, {}) == {"doc": reference}
+
+
+def test_a_list_prefill_with_one_wrong_extension_never_produces_a_plan():
+    # The one refusal left on the prefill road, and it is about the text: a form
+    # is never rendered around a value its own field could not accept back.
+    def prefilled(
+        docs: Annotated[list[Annotated[str, FileHint(extensions=(".pdf",))]],
+                        Label("Docs")] = ["here.pdf", "gone.txt"],
+    ) -> None: ...
+
+    with pytest.raises(Exception, match=r"\[1\]: not an accepted file type"):
         plan_of(prefilled)
 
 
@@ -1024,15 +1120,15 @@ def test_a_prefilled_default_matches_the_same_reference_set_afterwards(
         node, tmp_path):
     # The equivalence, across the real boundary: compiling with the default and
     # compiling without it then calling setValue() report the same read().
-    avatar = _stored(tmp_path, "same.jpg")
+    avatar = "avatars/same.jpg"
 
     def with_default(
-        avatar_: Annotated[str, IsPathFile(extensions=(".jpg",)),
+        avatar_: Annotated[str, FileHint(extensions=(".jpg",)),
                            Label("Avatar")] = avatar,
     ) -> None: ...
 
     def without_default(
-        avatar_: Annotated[str, IsPathFile(extensions=(".jpg",)),
+        avatar_: Annotated[str, FileHint(extensions=(".jpg",)),
                            Label("Avatar")],
     ) -> None: ...
 
@@ -1042,13 +1138,68 @@ def test_a_prefilled_default_matches_the_same_reference_set_afterwards(
     assert _file_star(node, tmp_path, with_default, {}) == planted
 
 
+# --- the widget's local limits, driven from the plan -------------------------
+#
+# minSize / maxSize are enforced in exactly one place now, and this is it: a
+# local File whose .size the browser can read. These drive the real modules over
+# a plan plan_of() generated, so the bound is followed from the Python
+# declaration to the message the user sees.
+
+def _bounded_upload(node, tmp_path, size):
+    def upload(
+        doc: Annotated[str, FileHint(extensions=(".pdf",),
+                                     min_size=100, max_size=1000),
+                       Label("Doc")],
+    ) -> None: ...
+
+    return _file_star_result(node, tmp_path, upload,
+                             {"choose": {"doc": [{"name": "report.pdf",
+                                                  "size": size}]}})
+
+
+def test_a_local_pick_inside_the_byte_bounds_mints_a_reference(node, tmp_path):
+    result = _bounded_upload(node, tmp_path, 500)
+
+    assert result["errors"]["doc"] is None
+    assert result["read"]["doc"].endswith(".pdf")
+
+
+@pytest.mark.parametrize("name, size, message", [
+    ("too small", 10, "File is too small; minimum"),
+    ("too large", 5000, "File is too large; maximum"),
+])
+def test_a_local_pick_outside_the_byte_bounds_is_refused_by_the_widget(
+        node, tmp_path, name, size, message):
+    result = _bounded_upload(node, tmp_path, size)
+
+    assert message in result["errors"]["doc"]
+    assert result["read"]["doc"] is None             # nothing minted, no upload
+
+
+def test_a_planted_reference_is_not_weighed_because_it_carries_no_bytes(
+        node, tmp_path):
+    # The asymmetry the documentation insists on, as a test. The same field that
+    # refuses a 10-byte local pick accepts a reference of unknown size, because
+    # there is nothing to read a size from. Only the host can close that gap.
+    def upload(
+        doc: Annotated[str, FileHint(extensions=(".pdf",),
+                                     min_size=100, max_size=1000),
+                       Label("Doc")],
+    ) -> None: ...
+
+    result = _file_star_result(node, tmp_path, upload,
+                               {"set": {"doc": "records/huge-or-tiny.pdf"}})
+
+    assert result["errors"]["doc"] is None
+    assert result["read"]["doc"] == "records/huge-or-tiny.pdf"
+
+
 def test_editing_without_touching_the_file_returns_it_byte_identical(node, tmp_path):
-    # The guarantee: a struct with an internal path goes to the form and back
+    # The guarantee: a struct with a stored reference goes to the form and back
     # complete without moving bytes. The record is set on the widgets, only the
     # name is edited, and read() returns the User with the avatar untouched. The
     # reference reaches the host's resolver exactly as it went in — that identity
-    # is the point, and it is what survives the crossing now that build() wants a
-    # real path rather than a promise.
+    # is the point, because it is all the host has to find the bytes with.
     read = _file_star(node, tmp_path, User,
                       {"set": {"name": "Ada Lovelace", "avatar": "avatars/ada.jpg"}})
 

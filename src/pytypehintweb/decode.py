@@ -117,12 +117,12 @@ def _to_enum_member(shape, value):
 
 
 def _is_file(shape):
-    return type(shape) is Str and shape.is_path_file is not None
+    return type(shape) is Str and shape.file_hint is not None
 
 
 def _decode_string(shapes, value, resolver):
     # The resolver only fires on an unambiguous file reading: a lone Str carrying
-    # IsPathFile. Another Str competing for the path leaves the reference alone
+    # FileHint. Another Str competing for the path leaves the reference alone
     # rather than guessing. Whatever the host returns continues as the value.
     strings = [s for s in shapes if type(s) is Str]
 

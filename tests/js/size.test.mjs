@@ -83,14 +83,15 @@ import { MODULES, measure } from "./size-report.mjs";
 // announces the value rather than the index. Measured with LF: raw 117_078 ->
 // 118_875 (+1_797, spread over inputs.js +841, slider.js +943 and contract.js
 // +13) and gzip 22_022 -> 22_385 (+363).
-// Nudged for IsPathFile's byte bounds: the file node stopped being refused when
+// Nudged for FileHint's byte bounds: the file node stopped being refused when
 // it carried min_size / max_size and started carrying them, so a local File is
-// weighed against them before any upload instead of after. FileWidget gained
+// weighed against them before any upload happens. FileWidget gained
 // the two options, their two messages, the per-file verdict and its reset paths
 // (_sizeError, _sizeLabel, _oversized), the normalizer and the contract check
 // gained four properties and the min <= max rule, and the defaults grew to
 // match. A reference the host plants carries no bytes, so nothing weighs it —
-// that is why this is courtesy and the core stays the authority. Measured with
+// which is why the bound only ever meets a local pick, and an authoritative one
+// over stored bytes stays with the host that keeps them. Measured with
 // LF: raw 118_875 -> 121_617 (+2_742, spread over inputs.js +1_661,
 // contract.js +354, defaults.js +154 and normalize.js +116) and gzip
 // 22_022 -> 22_589 (+567). inputs.js crossed the per-file ceiling by 813 bytes,

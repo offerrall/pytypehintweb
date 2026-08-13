@@ -608,32 +608,14 @@ UPLOADS = Path(tempfile.gettempdir()) / "pytypehintweb-demo-uploads"
 
 def stored_path(reference: str) -> str:
     # The seam between the two halves of a file field. The widget mints an opaque
-    # reference; `IsPathFile` certifies a real file — extension, existence,
-    # regular file, size. Nothing in the library knows how to get from one to the
-    # other, and deliberately so: only the host knows where it put the bytes.
-    # This demo puts them in a temp directory under the reference's own name, so
-    # the mapping is one line. A real host would look up its object store.
+    # reference; `FileHint` only ever reads an extension off it. Nothing in the
+    # library knows how to get from a reference to bytes, and deliberately so:
+    # only the host knows where it put them, whether they are still there and
+    # whether this caller may have them. This demo answers all three by naming a
+    # file in a temp directory, so the mapping is one line and trusts only the
+    # path segment. A real host would look up its object store here, and refuse
+    # a reference it cannot account for.
     return str(UPLOADS / Path(reference).name)
-
-
-# The two "edit an existing record" cases prefill a file field with a reference
-# that was never uploaded, because it stands for a file the host already had.
-# Under a core that checks the bytes, "already had" has to be true, so the demo
-# seeds them the way its own storage would already hold them.
-SAMPLE_FILES = ["ada-lovelace.jpg", "beach.jpg", "sunset.jpg"]
-
-
-def seed_sample_files():
-    UPLOADS.mkdir(parents=True, exist_ok=True)
-
-    for name in SAMPLE_FILES:
-        path = UPLOADS / name
-
-        if not path.exists():
-            path.write_bytes(b"demo")
-
-
-ON_STARTUP.append(seed_sample_files)
 
 
 @app.post("/build/{form_id}")

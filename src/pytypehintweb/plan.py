@@ -481,7 +481,7 @@ def _bound(bound, delta, path: str, what: str):
 
 
 def _file_size(bound, path: str, what: str):
-    # A plain int on IsPathFile, already checked there for being a non-negative
+    # A plain int on FileHint, already checked there for being a non-negative
     # int and for min <= max. All that is left is the one thing the core has no
     # reason to care about: JSON carries it to a JavaScript number.
     if bound is None:
@@ -563,7 +563,7 @@ def _incompatible(path: str, name: str, first: str, second: str) -> None:
 
 
 def _is_file_shape(shape) -> bool:
-    return type(shape) is Str and shape.is_path_file is not None
+    return type(shape) is Str and shape.file_hint is not None
 
 
 def _is_multiple_file_shape(shape) -> bool:
@@ -574,18 +574,20 @@ def _is_multiple_file_shape(shape) -> bool:
 
 
 def _file_node(shape, config, path: str) -> dict:
-    # IsPathFile turns a Str into a file field, still a str on the wire. The value
+    # FileHint turns a Str into a file field, still a str on the wire. The value
     # is a reference the browser widget mints locally from the chosen file, and
     # the widget filters it by extension. What the reference points at is the
-    # host's: the core certifies a real file, so the host maps the reference to
-    # its storage through decode()'s file_resolver. Empty extensions means any
-    # file.
+    # host's: a reference is not a path and carries no bytes, so the host maps it
+    # to its storage through decode()'s file_resolver and decides there whether
+    # it exists, is still valid and is the caller's to read. The core reads the
+    # extension off the text and nothing else. Empty extensions means any file.
     #
-    # minSize / maxSize are IsPathFile's byte bounds, one per file. They travel
-    # so the widget can refuse a local File whose .size already breaks them,
-    # before any upload; that is a courtesy, not the verdict. A reference the
-    # host plants carries no bytes, so the browser cannot weigh it and does not
-    # try — and the core re-measures the real file either way.
+    # minSize / maxSize are FileHint's declared byte bounds, one per file. They
+    # travel so the widget can refuse a local File whose .size already breaks
+    # them, before any upload; that is a courtesy for the one case the browser
+    # can weigh, not a verdict. A reference the host plants carries no bytes, so
+    # nothing weighs it — not the browser and not the core. An authoritative
+    # bound on stored bytes is the host's to enforce.
     #
     # minFiles / maxFiles stay null here and carry the list's Min / Max on a
     # multiple one. The current* labels drive the "current file" display
@@ -593,20 +595,20 @@ def _file_node(shape, config, path: str) -> dict:
     for name in _FILE_UNSUPPORTED:
         if getattr(shape, name) is not None:
             raise _error(
-                path, f"Str.{name} with IsPathFile is not supported yet")
+                path, f"Str.{name} with FileHint is not supported yet")
 
     return {
         "kind": "file",
         "options": {
-            "extensions": list(shape.is_path_file.extensions),
+            "extensions": list(shape.file_hint.extensions),
             "invalidMessage": config.file_invalid_message,
             "multiple": False,
             "minFiles": None,
             "maxFiles": None,
-            "minSize": _file_size(shape.is_path_file.min_size, path,
-                                  "IsPathFile.min_size"),
-            "maxSize": _file_size(shape.is_path_file.max_size, path,
-                                  "IsPathFile.max_size"),
+            "minSize": _file_size(shape.file_hint.min_size, path,
+                                  "FileHint.min_size"),
+            "maxSize": _file_size(shape.file_hint.max_size, path,
+                                  "FileHint.max_size"),
             "minMessage": config.file_min_message,
             "maxMessage": config.file_max_message,
             "minSizeMessage": config.file_min_size_message,
@@ -642,7 +644,7 @@ def _multiple_file_node(shape, config, path: str) -> dict:
 
 
 def _str_node(shape, config, path: str) -> dict:
-    if shape.is_path_file is not None:
+    if shape.file_hint is not None:
         return _file_node(shape, config, path)
 
     password = shape.is_password is not None
@@ -949,9 +951,9 @@ def _shape_node(shape, config, path: str) -> dict:
 
 def _check_branches(shapes, path: str) -> None:
     # option_id() is the wrapper $type the browser and decode() route by, so two
-    # branches sharing one are unroutable. Core 0.0.5 already rejects the
-    # collision on the normal Field path; this stays as defense in depth for
-    # shapes assembled off it.
+    # branches sharing one are unroutable. The core rejects the collision itself
+    # on every path it compiles — a field's union, and since 1.0.0 a list's items
+    # too; this stays as defense in depth for shapes assembled off those paths.
     seen = set()
 
     for shape in shapes:
@@ -1037,9 +1039,9 @@ def _branch_index(shapes, value, path: str) -> int:
 def _plain_value(shape, value, path: str):
     # A file default is an existing reference the host declares, exactly what
     # FileWidget.setValue() takes: a string the browser shows as the current
-    # file and transports back untouched. It carries no bytes and starts no
-    # upload. The core already certified this one through IsPathFile, so it
-    # travels as the plain str it is.
+    # file and transports back untouched. It carries no bytes, starts no upload
+    # and names nothing this side can look up — FileHint vouched for its
+    # extension and for nothing else — so it travels as the plain str it is.
     if _is_file_shape(shape):
         return value
 

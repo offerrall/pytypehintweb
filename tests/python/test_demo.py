@@ -128,9 +128,9 @@ def test_the_demo_mounts_its_widgets_inside_a_theme_root():
 # --- the file seam: reference in, stored path out ---------------------------
 
 def test_the_demo_resolves_a_reference_to_where_it_stored_the_bytes():
-    # The widget mints an opaque reference and IsPathFile certifies a real file.
-    # decode()'s file_resolver is the only seam between the two, and the demo has
-    # to use it or every file form would fail at build().
+    # The widget mints an opaque reference and nothing in the library or the core
+    # knows what it stands for. decode()'s file_resolver is the only seam where a
+    # host can say, and this demo says "a file in my uploads directory".
     assert demo.stored_path("abc-1234.pdf") == str(demo.UPLOADS / "abc-1234.pdf")
 
     # A reference is client-supplied, so the path segment is all that is trusted.
@@ -148,11 +148,10 @@ def _post_build(form_id, data):
 
 def test_the_build_endpoint_resolves_a_file_reference_end_to_end():
     # The whole seam, through the real endpoint: a prefilled record names a file
-    # the host already holds, the resolver turns it into a stored path, and the
-    # core certifies that path. Before the resolver was wired in, every file form
-    # answered "file does not exist".
-    demo.seed_sample_files()
-
+    # the host already holds and the resolver turns it into the path this host
+    # keeps its bytes at. The demo no longer seeds those files, because nothing
+    # downstream opens them — whether the bytes are really there is a question
+    # only a host that cares has to answer, in its own resolver.
     body = _post_build("file-edit",
                        {"name": "Ada Lovelace",
                         "avatar": "avatars/ada-lovelace.jpg"})
@@ -160,28 +159,20 @@ def test_the_build_endpoint_resolves_a_file_reference_end_to_end():
     assert body["ok"] is True
     assert "Ada Lovelace" in body["built"]
     assert "ada-lovelace.jpg" in body["built"]
+    # The reference did not travel raw: it came out mapped into the demo's own
+    # storage, which is the resolver's whole job. (repr() escapes a Windows
+    # separator, so the directory is matched by name rather than by full path.)
+    assert demo.UPLOADS.name in body["built"]
 
 
-def test_the_build_endpoint_still_reports_an_unstored_reference():
-    # The resolver maps, it does not invent: a reference whose bytes were never
-    # uploaded still fails, and the demo turns that into a readable envelope.
+def test_the_build_endpoint_reports_a_reference_of_the_wrong_kind():
+    # What the core still refuses is the extension, read off the text, and the
+    # demo turns that refusal into a readable envelope like any other.
     body = _post_build("file-edit",
-                       {"name": "Ada", "avatar": "never-uploaded-1234.jpg"})
+                       {"name": "Ada", "avatar": "never-uploaded-1234.txt"})
 
     assert body["ok"] is False
-    assert "file does not exist" in body["error"]
-
-
-def test_every_sample_record_reference_has_a_seeded_file():
-    # The two prefilled records name files the host is supposed to already hold.
-    # If a record grows a new one, it has to be seeded too or its form breaks.
-    import re
-
-    referenced = set(re.findall(r'"([^"]+\.(?:jpg|png|pdf))"', demo.HTML))
-    missing = [name for name in referenced
-               if Path(name).name not in demo.SAMPLE_FILES]
-
-    assert missing == [], f"unseeded sample files: {missing}"
+    assert "not an accepted file type" in body["error"]
 
 
 EXPECTED_MESSAGES = {
