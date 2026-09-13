@@ -287,10 +287,7 @@
 
 /* ===== Layout ===== */
 
-.pth-root .pth-field [hidden],
-.pth-root .pth-choice [hidden],
-.pth-root .pth-group [hidden],
-.pth-root .pth-list [hidden] {
+.pth-root [hidden] {
     display: none !important;
 }
 

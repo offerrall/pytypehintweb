@@ -79,7 +79,7 @@ the contract.
 ## `compileForm()`
 
 ```javascript
-compileForm(plan, { prefix = "pth" } = {})
+compileForm(plan, { prefix = "pth", hidden = [] } = {})
 ```
 
 It:
@@ -100,6 +100,20 @@ It does **not**:
 
 `prefix` seeds the generated element ids used to link labels to their
 controls.
+
+`hidden` is an array of field paths: `["id", "config.token", "items.*.token"]`.
+Dots descend into objects; `*` descends into every item of a list, including
+items added later. Optional and union wrappers add no path segment; a rule
+applies to every branch containing that field. Numeric list indices and
+branch-specific selectors are not supported. Unknown paths have no effect.
+
+Initial values and visibility follow the same recursive compilation of fields,
+objects, lists, choices and optionals. Each child receives its own initial value
+and the remaining visibility paths. Hiding sets the field element's native
+`hidden` property (including its label), without changing its value, readiness,
+validation or uploads. Mount all fields normally inside `.pth-root`; the
+stylesheet keeps hidden elements out of the layout. Visibility belongs to the
+opening and does not mutate the plan.
 
 The returned object:
 

@@ -677,6 +677,7 @@ export class ListWidget extends Widget {
 
         const row = document.createElement("div");
         row.className = "pth-list-item";
+        row.hidden = widget.el.hidden;
 
         const content = document.createElement("div");
         content.className = "pth-list-item-content";

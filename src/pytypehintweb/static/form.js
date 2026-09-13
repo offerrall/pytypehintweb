@@ -36,7 +36,26 @@ function withInitial(widget, initial) {
 }
 
 
-function compileNode(node, nextId, initial) {
+function childOpening({ initial, hidden }, name) {
+    return {
+        initial: initial === undefined ? undefined : ownValue(initial, name),
+        hidden: hidden.flatMap((path) => path === name ? [""]
+            : path.startsWith(`${name}.`) && path.length > name.length + 1
+                ? [path.slice(name.length + 1)] : []),
+    };
+}
+
+
+function compileFields(fields, nextId, opening) {
+    return fields.map((field) => {
+        const child = childOpening(opening, field.name);
+        return compileField(field, nextId, child.initial, child.hidden);
+    });
+}
+
+
+function compileNode(node, nextId, opening) {
+    const { initial } = opening;
     switch (node.kind) {
         case "str":
             if (node.options.choices !== null) {
@@ -78,16 +97,16 @@ function compileNode(node, nextId, initial) {
             return scalar(withInitial(new FileWidget(node.options), initial));
 
         case "list":
-            return compileList(node, nextId, initial);
+            return compileList(node, nextId, opening);
 
         case "object":
-            return compileObject(node, nextId, initial);
+            return compileObject(node, nextId, opening);
 
         case "choice":
-            return compileChoice(node, nextId, initial);
+            return compileChoice(node, nextId, opening);
 
         case "optional":
-            return compileOptional(node, nextId, initial);
+            return compileOptional(node, nextId, opening);
 
         default:
             throw new TypeError(`unknown node: ${node.kind}`);
@@ -95,11 +114,14 @@ function compileNode(node, nextId, initial) {
 }
 
 
-function compileList(node, nextId, initial) {
+function compileList(node, nextId, opening) {
+    const { initial } = opening;
     const readers = new WeakMap();
 
-    const createItem = (itemInitial) => {
-        const item = compileNode(node.item, nextId, itemInitial);
+    const itemOpening = childOpening({ ...opening, initial: undefined }, "*");
+    const createItem = (initial) => {
+        const item = compileNode(node.item, nextId, { ...itemOpening, initial });
+        item.widget.el.hidden = itemOpening.hidden.includes("");
         readers.set(item.widget, item.read);
         return item.widget;
     };
@@ -123,11 +145,8 @@ function compileList(node, nextId, initial) {
 }
 
 
-function compileObject(node, nextId, initial) {
-    const children = node.fields.map((field) => compileField(
-        field, nextId,
-        initial === undefined ? undefined : ownValue(initial, field.name),
-    ));
+function compileObject(node, nextId, opening) {
+    const children = compileFields(node.fields, nextId, opening);
 
     const widget = new GroupWidget(
         children.map((child) => ({ name: child.name, widget: child.widget })),
@@ -146,14 +165,19 @@ function compileObject(node, nextId, initial) {
 }
 
 
-function compileChoice(node, nextId, initial) {
+function compileChoice(node, nextId, opening) {
+    const { initial } = opening;
     const selectedIndex = initial === undefined ? 0 : initial.branch;
 
     const branches = node.branches.map((branch, index) => ({
         ...branch,
         compiled: compileNode(
             branch.node, nextId,
-            index === selectedIndex && initial !== undefined ? initial.value : undefined,
+            {
+                ...opening,
+                initial: index === selectedIndex && initial !== undefined
+                    ? initial.value : undefined,
+            },
         ),
     }));
 
@@ -190,9 +214,11 @@ function compileChoice(node, nextId, initial) {
 }
 
 
-function compileOptional(node, nextId, initial) {
-    const inner = compileNode(node.node, nextId,
-                              initial === null ? undefined : initial);
+function compileOptional(node, nextId, opening) {
+    const { initial } = opening;
+    const inner = compileNode(node.node, nextId, {
+        ...opening, initial: initial === null ? undefined : initial,
+    });
 
     const widget = new Field(
         {
@@ -211,15 +237,16 @@ function compileOptional(node, nextId, initial) {
 }
 
 
-export function compileField(field, nextId, inherited) {
+export function compileField(field, nextId, inherited, hidden = []) {
     const initial = inherited === undefined && field.hasDefault
         ? field.default
         : inherited;
 
     const enabled = inherited === undefined ? field.enabled : inherited !== null;
 
-    const inner = compileNode(field.node, nextId,
-                              initial === null ? undefined : initial);
+    const inner = compileNode(field.node, nextId, {
+        initial: initial === null ? undefined : initial, hidden,
+    });
 
     const widget = new Field(
         {
@@ -232,6 +259,8 @@ export function compileField(field, nextId, inherited) {
         inner.widget,
     );
 
+    widget.el.hidden = hidden.includes("");
+
     return {
         name: field.name,
         widget,
@@ -240,11 +269,15 @@ export function compileField(field, nextId, inherited) {
 }
 
 
-export function compileForm(plan, { prefix = "pth" } = {}) {
+export function compileForm(plan, { prefix = "pth", hidden = [] } = {}) {
     const normalized = checkPlan(plan);
 
+    if (!Array.isArray(hidden) || hidden.some((path) => typeof path !== "string")) {
+        throw new TypeError("hidden must be an array of strings");
+    }
+
     const nextId = idFactory(prefix);
-    const fields = normalized.fields.map((field) => compileField(field, nextId));
+    const fields = compileFields(normalized.fields, nextId, { hidden });
 
     const callbacks = new Set();
 

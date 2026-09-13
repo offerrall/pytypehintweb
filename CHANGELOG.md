@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2026-09-13
+
+- `compileForm(plan, {hidden})` accepts root names, dotted object paths and
+  list wildcards. Initial values and visibility use the same compiler traversal,
+  including optional and union branches and newly added list items. Hidden
+  fields retain their values, validation and uploads. No plan format change.
+
 
 ## [1.1.0] - 2026-08-13
 
