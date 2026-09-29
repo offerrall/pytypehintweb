@@ -29,6 +29,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/offerrall/pytypehintweb"
+Documentation = "https://offerrall.github.io/pytypehintweb/"
 Repository = "https://github.com/offerrall/pytypehintweb"
 Issues = "https://github.com/offerrall/pytypehintweb/issues"
 

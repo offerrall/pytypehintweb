@@ -1,11 +1,30 @@
 # Changelog
 
-## [1.2.1] - 2026-09-29
+## 1.2.2 - 2026-09-29
+
+### Changed
+
+- Documentation only: the README becomes a short entrance to the documentation
+  site at https://offerrall.github.io/pytypehintweb/, and `docs/overview.md`
+  holds the introduction (what the library does, where it stops, its features
+  and its stability promise), stated once instead of on several pages.
+- The documentation drops install commands, badges and version numbers in
+  prose, and states its limits as facts: the enum `labels` slot, the absence of
+  a Python plan validator and the plan version policy are each described once.
+  "Current limitations" is now "Limitations", testing and CI are listed as
+  maintainer pages, and links to pytypehint and func-to-web point to their
+  documentation sites.
+- The changelog headings use one format, the dates of 0.0.1, 0.0.2 and 0.0.4
+  are corrected to their release dates, and the missing 0.0.6 entry is added.
+
+The code is the same as 1.2.1.
+
+## 1.2.1 - 2026-09-29
 
 - Documentation only: the README title no longer carries the version. The code
   is the same as 1.2.0.
 
-## [1.2.0] - 2026-09-13
+## 1.2.0 - 2026-09-13
 
 - `compileForm(plan, {hidden})` accepts root names, dotted object paths and
   list wildcards. Initial values and visibility use the same compiler traversal,
@@ -13,7 +32,7 @@
   fields retain their values, validation and uploads. No plan format change.
 
 
-## [1.1.0] - 2026-08-13
+## 1.1.0 - 2026-08-13
 
 **`decode()` stopped carrying a reader of the portable representation and now
 asks the core for one.** Everything it used to restore by hand — the float a
@@ -85,7 +104,7 @@ pin introduced after that release contradicted them. The package no longer
 classifies itself as `Development Status :: 3 - Alpha`.
 
 
-## [1.0.0] - 2026-08-13
+## 1.0.0 - 2026-08-13
 
 The core is now `pytypehint >= 1.0.0`, and the dependency has no upper bound.
 There is no compatibility path back to `0.x`: the atom `IsPathFile` is gone and
@@ -144,7 +163,13 @@ removed, and the browser runtime needed no edit — it never knew the atom's nam
 `pytypehintweb`'s own version is unchanged too.
 
 
-## [0.0.5] - 2026-08-03
+## 0.0.6 - 2026-08-11
+
+- The `pytypehint` dependency is pinned to exactly 0.0.7 instead of a minimum.
+  No code change.
+
+
+## 0.0.5 - 2026-08-03
 
 A file field works again on a page that is not served from `localhost`.
 `mintFileReference` reached straight for `crypto.randomUUID()`, and that method
@@ -173,7 +198,7 @@ avoid colliding with the other references a space is holding, and
 one of the two APIs is withheld outside a secure context and the other is not.
 
 
-## [0.0.4] - 2026-07-28
+## 0.0.4 - 2026-07-29
 
 The current-file label is compacted now. A planted reference is whatever the host
 already holds — a local server path, a stored name, a URL — and the widget used to
@@ -198,7 +223,7 @@ inventing a category here to decide how a label reads, which is the wrong place
 for it — the problem was never the kind of file, it was the length of the string.
 
 
-## [0.0.3] - 2026-07-27
+## 0.0.3 - 2026-07-27
 
 A file field can carry a default now, and it means what `FileWidget.setValue()`
 has always meant: an existing reference the host declares, shown as the current
@@ -375,7 +400,7 @@ link is a link again, and a table of thirty-odd cases pins the semantics so the
 next change to it has to be deliberate.
 
 
-## [0.0.2] - 2026-07-26
+## 0.0.2 - 2026-07-27
 
 A minted file reference now carries the name of the file it came from. When the
 user picks a file, `FileWidget` compresses that file's name to bare ASCII —
@@ -586,9 +611,9 @@ explicit blocks keep a subtree themable without a global `color-scheme` — and
 the widgets, the plan, the transport and validation are byte-for-byte the same.
 
 
-## [0.0.1] - 2026-07-22
+## 0.0.1 - 2026-07-24
 
 First release. `pytypehintweb` is the browser form layer for
-[`pytypehint`](https://github.com/offerrall/pytypehint): it converts a compiled
+[`pytypehint`](https://offerrall.github.io/pytypehint/): it converts a compiled
 type schema into a JSON-serializable form plan and renders it with framework-free
 JavaScript widgets. Requires `pytypehint >= 0.0.6`.

@@ -23,21 +23,8 @@ the route, the static files, the `fetch` and the `POST` are written by you.
 FastAPI is used as the concrete example. Nothing in the library requires it:
 any framework that can return JSON and read a JSON body works the same way.
 `pytypehintweb` provides no server, no routes and no static-file handler of
-its own.
-
-## Installation
-
-```bash
-pip install pytypehintweb
-```
-
-To run the example below as written:
-
-```bash
-pip install "pytypehintweb[demo]"
-```
-
-That extra installs FastAPI and Uvicorn, which the bundled demo also uses.
+its own. The example runs with FastAPI and Uvicorn, which the `demo` extra
+provides, as the bundled demo uses them too.
 
 ## Generate a plan from Python
 
@@ -132,7 +119,7 @@ true):
 }
 ```
 
-There is a single representation now, and the browser never reconstructs an
+There is a single representation, and the browser never reconstructs an
 absence. See the [plan contract](plan.md) for every property and its meaning.
 
 ## Serve the browser files
@@ -166,9 +153,11 @@ def create(data: dict):
 
 `decode()` prepares the JSON-parsed body for `schema.build()`: it is the
 reverse-pipeline counterpart of `plan_of()`, coercing the values the transport
-cannot express by exact type (today, an `int` where the schema wants a `float`)
-and leaving everything else untouched. This form has none, so `decode()` returns
-the body unchanged; adding it now keeps the backend correct as the schema grows.
+cannot express by exact type (an `int` where the schema wants a `float`, ISO
+text where it wants a `date` or `time`, a member name where it wants an enum
+member) and leaving everything else untouched. This form has none, so `decode()`
+returns the body unchanged; calling it anyway keeps the backend correct as the
+schema grows.
 
 Copying the files next to your own assets works just as well; they are plain
 ES modules with no build step.
@@ -272,4 +261,4 @@ object and the core's answer.
 - [Python API](python.md) — everything `plan_of()` reads and rejects.
 - [JavaScript API](javascript.md) — `compileForm()`, widgets and styling.
 - [Plan contract](plan.md) — the document format and its defaults.
-- [Current limitations](limitations.md) — what is not supported yet.
+- [Limitations](limitations.md) — what a plan cannot represent.

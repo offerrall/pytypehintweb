@@ -16,18 +16,6 @@ def blocks(path: Path, language: str) -> list[str]:
     return [body for fence, body in FENCE.findall(text) if fence == language]
 
 
-def test_the_readme_quick_start_plan_matches_plan_of():
-    def create_user(
-        username: Annotated[str, Min(3), Label("Username")],
-        age: Annotated[int, Min(0), Label("Age")],
-    ) -> None:
-        pass
-
-    documented = json.loads(blocks(Path("README.md"), "json")[0])
-
-    assert documented == plan_of(create_user)
-
-
 def test_the_getting_started_plan_matches_plan_of():
     def create_user(
         username: Annotated[str, Min(3), Label("Username")],
@@ -59,7 +47,7 @@ def test_the_getting_started_build_example_returns_the_documented_value():
 def test_every_documented_json_block_parses():
     invalid = []
 
-    for name in ["README.md", "docs/plan.md", "docs/getting-started.md",
+    for name in ["README.md", "docs/overview.md", "docs/plan.md", "docs/getting-started.md",
                  "docs/python.md", "docs/javascript.md"]:
         for index, body in enumerate(blocks(Path(name), "json")):
             try:

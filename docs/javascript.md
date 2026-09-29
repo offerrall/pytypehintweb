@@ -4,10 +4,6 @@ The browser runtime is a set of ES modules with no dependencies and no build
 step. It renders forms from a plan and reports what the user represents; it
 never talks to a server on its own.
 
-These modules perform no request, mount nothing into the page and submit
-nothing. Fetching the plan, appending the widgets and posting the transport
-object are all the application's decisions.
-
 See the [plan contract](plan.md) for the document these modules consume.
 
 ## Browser modules
@@ -661,12 +657,12 @@ which is how a form resets.
 **Nobody but the host provides a net for the reference/bytes coherence.** The
 browser mints a reference and checks only the extension; it never verifies that
 anything is stored behind it. Neither does the Python side: `FileHint` checks the
-same extension on the same text, and `pytypehint 1.0.0` opens no files at all, so
+same extension on the same text, and the core opens no files at all, so
 a reference whose bytes were never stored travels on as the plain string it is.
 The net has to be where the storage is. `decode(..., file_resolver=...)` is where
 it plugs in: the host maps the reference to whatever it kept, and raises from
 there when it cannot — the exception propagates unchanged. A wrapper such as
-[FuncToWeb](https://github.com/offerrall/FuncToWeb) that builds the upload cycle
+[func-to-web](https://offerrall.github.io/func-to-web/) that builds the upload cycle
 owns both halves: storing the bytes and resolving the reference to them.
 
 This is the general pattern for any value promised in the browser but completed
@@ -953,7 +949,7 @@ before the first paint — normally with a small inline script early in `<head>`
 </script>
 ```
 
-The same applies to a host like FuncToWeb. To theme only the form rather than
+The same applies to a host like func-to-web. To theme only the form rather than
 the page, write the attribute on the `.pth-root` element instead of on
 `<html>`.
 

@@ -8,10 +8,6 @@ See the [plan contract](plan.md) for the shape of the produced document, the
 [architecture](architecture.md) for where this layer sits, and
 [getting started](getting-started.md) for a complete end-to-end example.
 
-This module renders nothing, serves nothing and calls nothing. It reads a
-schema and returns a dictionary; moving that dictionary to the browser, and
-moving the resulting transport object back, is the host application's job.
-
 The final validation and the construction of the resulting objects stay in
 `pytypehint`: an application that receives `form.read()` passes it to
 `Signature.build()` or `Struct.build()`.
@@ -294,8 +290,8 @@ form.read() → decode(..., file_resolver=…) → the host's own value → sche
 ```
 
 Both roads land the widget in the same observable state, and neither of them
-proves the bytes exist — nothing in this library or in the core ever did that,
-and since `pytypehint 1.0.0` nothing claims to. A reference that has expired,
+proves the bytes exist, and nothing in this library or in the core claims to:
+the core opens no files. A reference that has expired,
 that was never uploaded or that belongs to somebody else shows fine in the form
 and travels back intact. **The place to catch it is the resolver**, which is the
 one point where code that knows the storage sees the reference:
@@ -335,15 +331,14 @@ in a position to notice is its own: at the upload endpoint, or in the
 resolver's **answer** is what continues down the pipeline, so it faces the
 extension check too. A host resolving `report.pdf` to a bare key
 `s3://bucket/9f3a1c` fails at `build()` with `not an accepted file type` — keep
-the extension, or declare `FileHint()` without one. FuncToWeb (or any wrapper)
+the extension, or declare `FileHint()` without one. func-to-web (or any wrapper)
 owns that mapping; see
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
-Only a bare `FileHint` is emitted today. The other `Str` atoms — `Min`, `Max`,
+Only a bare `FileHint` is emitted. The other `Str` atoms — `Min`, `Max`,
 `Pattern`, `Choices`, `IsPassword`, `Rows`, `Placeholder` — describe a text box
 and have no meaning on a file control, so any of them alongside `FileHint`
-raises `TypeError` ("not supported yet"), deferred until a real case asks for it,
-exactly as `Float.slider` is. `FileHint`'s own `min_size` and `max_size` are
+raises `TypeError` ("not supported yet"), exactly as `Float.slider` does. `FileHint`'s own `min_size` and `max_size` are
 **not** among them: they describe the file, not a text box, and they travel.
 `Label` and `Description` are the field's, not the `Str`'s, so a labelled file
 field is fine.
@@ -559,9 +554,9 @@ class the shape carries.
 `__members__` and answers with the canonical member, so `decode()` returns the
 member the alias points at and `build()` accepts it (its type is the enum class).
 
-`Extra` on the core's enum is stored but **not interpreted** by the adapter; the
-`labels` slot on the node is where a future `Extra` vocabulary for visible member
-labels would land (see [limitations](limitations.md#unsupported-metadata)).
+`Extra` on the core's enum is stored but **not interpreted** by the adapter: the
+widget shows the member names, and the node's `labels` slot is always `null`
+(see [limitations](limitations.md#unsupported-metadata)).
 
 In a union, a member is a JSON string, so an enum shares the string transport
 with `str`, `date`, `time` and other enums: every such branch travels `wrapped`,
@@ -878,7 +873,7 @@ wraps it nor invents an error of its own. It is the one way `decode()` raises on
 a value rather than leaving it for `build()`, and only because the host asked for
 it.
 
-FuncToWeb is one such host: it resolves references against its uploads directory
+func-to-web is one such host: it resolves references against its uploads directory
 so the function it calls receives a plain path. Nothing about `decode()` requires
 that, or any other particular storage.
 
@@ -1005,4 +1000,4 @@ Exact error strings are not part of any compatibility guarantee.
 integers, unportable patterns, ambiguous transport identifiers, empty nested
 objects, unreachable or unbounded sliders, converted defaults the browser could
 not accept, and an invalid `WebConfig`. See
-[current limitations](limitations.md) for the full list.
+[limitations](limitations.md) for the full list.

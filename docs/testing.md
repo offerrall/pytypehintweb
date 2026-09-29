@@ -231,8 +231,8 @@ three jobs: **Python** (a `3.11`/`3.12`/`3.13` matrix running `mypy` and the
 `pytest` suite, packaging/assets test included), **JavaScript** (the `node --test`
 suite — widgets, size budget and plan-doc examples — plus the headless-Chrome
 browser smoke and the theme-cascade page, the latter once per system
-preference), and **Packaging** (`uv build` then `uvx twine check`). Installing
-the project resolves its one runtime dependency, `pytypehint >= 1.0.0`, from PyPI.
+preference), and **Packaging** (`uv build` then `uvx twine check`). The runtime
+dependency on `pytypehint` resolves from PyPI.
 
 Releases are published from `.github/workflows/publish.yml`, which triggers only
 when a GitHub Release is *published*. It re-runs every check, builds the wheel and

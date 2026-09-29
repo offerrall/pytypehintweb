@@ -29,9 +29,8 @@ identifies the contract itself.
 { "v": 1, "kind": "form", "name": "example", "description": null, "fields": [] }
 ```
 
-Only version `1` is currently supported. A plan whose `v` is missing, is not an
-integer, or names an unsupported version is rejected before any widget is
-constructed:
+The only version is `1`. A plan whose `v` is missing, is not an integer, or
+names an unsupported version is rejected before any widget is constructed:
 
 ```text
 plan.v: is required
@@ -40,19 +39,15 @@ plan.v: unsupported plan version: 2
 ```
 
 There are no migrations or compatibility layers: a producer targets exactly
-version `1`.
-
-The version policy is simple: **every incompatible change to the serialized plan
-increments `v`, including before 1.0.** A given `v` therefore has one fixed
-meaning, so a consumer can pin the `v` it understands and trust that a plan
-carrying it has not changed shape underneath.
+version `1`. The version policy is in [Compatibility](#compatibility).
 
 ## Producing and checking plans
 
 `plan_of()` is the supported Python producer; it always emits a valid `v: 1`
 plan. Hand-written browser plans are checked by `checkPlan()` (which
-`compileForm()` calls for you). A standalone Python plan validator is not
-currently provided — Python users generate plans through `plan_of()`.
+`compileForm()` calls for you). There is no standalone Python plan validator:
+Python users generate plans through `plan_of()` (see
+[Limitations](limitations.md#producing-plans-in-python)).
 
 ## A single, expanded representation
 
@@ -772,9 +767,9 @@ Invariants:
   default, or the first member), so it is never empty, never in error, and needs
   no prompt or validation message. The key exists only for structural symmetry
   with the other scalar nodes.
-- `labels` is always `null`. It is the reserved slot for visible member labels a
-  future `Extra` vocabulary would supply; until that exists it must be `null`.
-  `Extra` on the core's enum is not interpreted by the adapter.
+- `labels` is always `null`, and a plan that sets it is rejected. `Extra` on the
+  core's enum is not interpreted by the adapter, so an enum shows its member
+  names.
 - A `default`, when present, is one of `choices`.
 - On the wire a member is a JSON string, so it shares the string transport with
   `str`, `date`, `time` and other enums. When a union actually puts two or more
@@ -1417,7 +1412,7 @@ valid inside a character class. Supported brace quantifiers are `{n}`, `{n,}`
 and `{n,m}`.
 
 This is not a guarantee that the two engines agree on everything else. The
-subset may become stricter.
+subset may become stricter if another divergence is found.
 
 ## Compatibility
 
@@ -1427,10 +1422,8 @@ present exactly when `hasDefault` is true). There is one representation and one
 meaning per key, so no widget ever has to interpret an absence. The contract
 version is `v: 1`.
 
-The plan contract is public and tested. A breaking plan change increments `v`
-(see [Version](#version)), is documented in the release notes, and belongs to a
-major release; `v: 1` has one fixed meaning and keeps it.
-
-Every form plan carries a mandatory integer `v` (see [Version](#version));
-version `1` is the only one currently supported. A producer targeting this
-contract should pin a `pytypehintweb` version range until 1.0.
+The plan contract is public and tested. **Every incompatible change to the
+serialized plan increments `v`**, is documented in the changelog, and belongs to
+a major release. A given `v` therefore has one fixed meaning, so a consumer can
+pin the `v` it understands (see [Version](#version)) and trust that a plan
+carrying it has not changed shape underneath.

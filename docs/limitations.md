@@ -1,4 +1,4 @@
-# Current limitations
+# Limitations
 
 Everything a schema carries that the browser cannot represent faithfully
 makes `plan_of()` raise `TypeError` — with one exception,
@@ -9,12 +9,9 @@ time.
 
 ## Scalar types
 
-The current scalar slice is `str`, `int`, `float`, `date`, `time`, `bool` and
-`enum` (any non-`Flag`, non-empty `Enum`).
-
-Those compose through lists, nested lists, optional values, unions,
-dataclasses and function signatures, which is enough to exercise the whole
-pipeline: absence, values, constraints, parsing, transport and construction.
+The scalar types are `str`, `int`, `float`, `date`, `time`, `bool` and `enum`
+(any non-`Flag`, non-empty `Enum`). They compose through lists, nested lists,
+optional values, unions, dataclasses and function signatures.
 
 Any other scalar shape raises:
 
@@ -181,6 +178,13 @@ is merely unsatisfiable (never valid) — an unreachable ordinary `multipleOf`
 range, say — and `checkPlan` accepts it, because it corrupts nothing it
 transports; the widget simply never becomes ready.
 
+## Producing plans in Python
+
+`plan_of()` is the only Python producer, and there is no standalone Python plan
+validator: a plan written by hand or by another backend is checked in the
+browser, by `checkPlan()`, which `compileForm()` calls before building any
+widget.
+
 ## Message templates are not a translation engine
 
 Validation messages are simple templates with a single fixed placeholder —
@@ -197,11 +201,8 @@ below the widgets.
 
 ## Unsupported metadata
 
-- `Extra` is not interpreted, including on an enum. The `enum` node reserves a
-  `labels` slot (always `null` today) for the visible member labels a future
-  `Extra` vocabulary would supply; that vocabulary will be designed when a real
-  consumer (FuncToWeb) needs it, not before. Until then an enum shows the raw
-  member names.
+- `Extra` is not interpreted, including on an enum. An enum shows its raw member
+  names, and the `enum` node's `labels` slot is always `null`.
 - Metadata combinations that ask for different controls are rejected rather
   than resolved by the adapter: `Rows`, `IsPassword` and `Choices` on a
   string, and `Choices` with `Slider`, `Choices` with `Placeholder`, or
@@ -247,12 +248,12 @@ describe. What is *limited* here:
 **A reference is not a path, and nothing between the browser and the core can
 close that gap.** All the widget ever checks is the extension — a lenient
 `endswith` filter — and the core checks the same extension on the same text.
-Neither of them knows whether bytes were stored, and since `pytypehint 1.0.0`
-neither claims to: existence, regular-file-ness and byte size left the core, so
-an unstored reference builds into the plain string it always was. Deciding
+Neither of them knows whether bytes were stored, and neither claims to: the core
+opens no files and checks neither existence nor byte size, so an unstored
+reference builds into the plain string it is. Deciding
 whether a reference is real is the **host's**, at the only point where code that
 knows the storage sees it — `decode(..., file_resolver=...)`, which propagates
-whatever the host raises. A wrapper such as FuncToWeb that builds the upload
+whatever the host raises. A wrapper such as func-to-web that builds the upload
 cycle owns that decision. The full cycle is in
 [Values completed outside the browser](javascript.md#values-completed-outside-the-browser).
 
@@ -277,23 +278,6 @@ already in it, or building the widget directly with `StrChoiceWidget`,
 over member names). An enum's set of members is fixed in the type, so it is
 static by nature.
 
-## Not a web framework
-
-`pytypehintweb` provides no web server, no routing, no static-file handler, no
-authentication, no session handling and no way to invoke a Python function
-from the browser. It generates plans and provides the widgets that consume
-them; everything around that is the host application's.
-
-The bundled demo is a small FastAPI application written on top of the library
-to show the pipeline end to end. Its routes and its file handler are part of
-the demo, not of the public API.
-
-For the complete request/response cycle — routing, file serving and calling
-the function itself — see [FuncToWeb](https://github.com/offerrall/FuncToWeb),
-a separate project by the same author. From its 2.0.0 release it will use this
-package as its rendering core; the dependency runs in that direction only, and
-nothing here depends on FuncToWeb.
-
 ## Accessibility
 
 The widgets expose names, descriptions, invalid state and grouping through
@@ -314,16 +298,10 @@ transport object once it leaves the browser, remain the application's job.
 
 ## Distribution
 
-`pytypehintweb` is published on PyPI (`pip install pytypehintweb`); there is no
-npm package. Hosting, deployment and CI belong to the host application, not to
-the library.
-
-The browser modules live inside the Python package, under
-`pytypehintweb.STATIC`, and are meant to be served or copied as plain static
-files.
-
-They are ES modules with no build step, no bundler configuration and no type
-declarations.
+There is no npm package. The browser modules live inside the Python package,
+under `pytypehintweb.STATIC`, and are meant to be served or copied as plain
+static files. They are ES modules with no build step, no bundler configuration
+and no type declarations.
 
 ## Browser support
 
@@ -344,25 +322,13 @@ global `color-scheme`.
 The stylesheet also expects the widgets to be mounted inside a `.pth-root`
 container; outside one they are unstyled rather than half-styled. Its theme
 contract is exactly `.pth-root`, `.pth-root[data-pth-theme="light"]` and
-`.pth-root[data-pth-theme="dark"]` — the pre-1.0 `[data-theme]` attribute and
-the `.light-mode` / `.dark-mode` classes were removed, not aliased.
+`.pth-root[data-pth-theme="dark"]`; no other attribute or class selects a theme.
 
-**The stylesheet needs its `icons/` subdirectory.** Its icons are `.svg` files
-addressed relative to the sheet, so they follow it under any static prefix, but
-a host that serves only the flat files leaves the selects without a chevron and
-the remove buttons without a glyph. Nothing is embedded as a data URI, so the
-page needs no `img-src data:` — a plain `img-src 'self'` is enough — and the
-library sets no CSP headers of its own. An icon that fails to load costs the
-glyph and nothing else: size, accessible name and behaviour are unaffected.
+**The stylesheet needs its `icons/` subdirectory**, served beside it; see
+[Icons](javascript.md#icons).
 
-The automated tests run on Node with a lightweight fake DOM, so they cover
-widget logic, state and transport, not layout or real browser event
-behaviour. No specific browser version is claimed beyond what those tests
-demonstrate; the bundled demo is the practical way to check a target browser.
-
-## Plan contract stability
-
-The plan contract is public and tested. A breaking change to it increments `v`
-and belongs to a major release; `v: 1` has one fixed meaning and keeps it. See
-the [plan contract](plan.md#compatibility) for the version policy (a mandatory
-`v`, currently `1`) and the single-representation guarantee.
+The Node suites run against a lightweight fake DOM, so they cover widget logic,
+state and transport; a headless-Chrome smoke page and a theme-cascade page cover
+the few behaviours only a real browser has (see [Testing](testing.md)). No
+specific browser version is claimed; the bundled demo is the practical way to
+check a target browser.
