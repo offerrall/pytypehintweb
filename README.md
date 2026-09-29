@@ -34,14 +34,14 @@ The full documentation is at https://offerrall.github.io/pytypehintweb/.
 
 ## Documentation
 
-- [Overview](docs/overview.md): what the library does, where it stops, its features and its stability promise.
-- [Getting started](docs/getting-started.md): one complete form, from a Python function to the built result.
-- [Plan contract](docs/plan.md): the plan format, every property, default and invariant.
-- [Python API](docs/python.md): `plan_of()`, `decode()`, `WebConfig` and how each annotation maps to a node.
-- [JavaScript API](docs/javascript.md): `compileForm()`, widgets, reading, accessibility, styling and themes.
-- [Architecture](docs/architecture.md): the layers and which layer owns each rule.
-- [Limitations](docs/limitations.md): what a plan cannot represent and why.
+- [Overview](https://offerrall.github.io/pytypehintweb/): what the library does, where it stops, its features and its stability promise.
+- [Getting started](https://offerrall.github.io/pytypehintweb/getting-started/): one complete form, from a Python function to the built result.
+- [Plan contract](https://offerrall.github.io/pytypehintweb/plan/): the plan format, every property, default and invariant.
+- [Python API](https://offerrall.github.io/pytypehintweb/python/): `plan_of()`, `decode()`, `WebConfig` and how each annotation maps to a node.
+- [JavaScript API](https://offerrall.github.io/pytypehintweb/javascript/): `compileForm()`, widgets, reading, accessibility, styling and themes.
+- [Architecture](https://offerrall.github.io/pytypehintweb/architecture/): the layers and which layer owns each rule.
+- [Limitations](https://offerrall.github.io/pytypehintweb/limitations/): what a plan cannot represent and why.
 
 ### Maintaining
 
-- [Testing](docs/testing.md): how to run the suites, what they guarantee, and CI and release.
+- [Testing](https://offerrall.github.io/pytypehintweb/testing/): how to run the suites, what they guarantee, and CI and release.

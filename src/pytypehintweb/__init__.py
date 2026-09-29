@@ -6,7 +6,7 @@ from pytypehintweb.types import COLOR_PATTERN, EMAIL_PATTERN, Color, Email
 
 STATIC = Path(__file__).parent / "static"
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 __all__ = [
     "plan_of",

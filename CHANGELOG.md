@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3 - 2026-09-29
+
+### Changed
+
+- Documentation only: the README's Documentation list links each page on the
+  documentation site, so readers on GitHub and PyPI land there. The code is the same as 1.2.2.
+
 ## 1.2.2 - 2026-09-29
 
 ### Changed

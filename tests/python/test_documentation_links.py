@@ -69,6 +69,13 @@ def test_the_readme_links_to_every_documentation_page():
         if document.name == "README.md":
             linked.add(target[len(SELF):].partition("#")[0])
 
+    # The README's Documentation list links each page on the documentation site.
+    site = "https://offerrall.github.io/pytypehintweb/"
+    for target in LINK.findall(readme.read_text(encoding="utf-8")):
+        if target.startswith(site):
+            page = target[len(site):].partition("#")[0].strip("/")
+            linked.add(f"docs/{page}.md" if page else "docs/overview.md")
+
     pages = {f"docs/{path.name}" for path in (ROOT / "docs").glob("*.md")}
 
     assert readme.is_file()
