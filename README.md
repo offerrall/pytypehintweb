@@ -1,4 +1,4 @@
-# pytypehintweb 1.2.0
+# pytypehintweb
 
 [![PyPI version](https://img.shields.io/pypi/v/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)
 [![Python](https://img.shields.io/pypi/pyversions/pytypehintweb.svg)](https://pypi.org/project/pytypehintweb/)

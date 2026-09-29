@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.1] - 2026-09-29
+
+- Documentation only: the README title no longer carries the version. The code
+  is the same as 1.2.0.
+
 ## [1.2.0] - 2026-09-13
 
 - `compileForm(plan, {hidden})` accepts root names, dotted object paths and
