@@ -589,7 +589,10 @@ the grammar runs, so it is accepted as the decimal separator under exactly the
 same restrictions — one separator at most, never a thousands mark. Text outside
 it shows `invalidMessage`. A grammar-valid magnitude that overflows to `Infinity`
 shows `finiteMessage` and reads as `null`; it is never transported, the float
-analogue of the integer's safe-range guard.
+analogue of the integer's safe-range guard. For the same reason the `default` of
+a node without `choices` must be a number JavaScript writes as a plain decimal:
+`checkPlan()` rejects one it writes in exponent notation, such as `1e-7` or
+`1e21`.
 
 ### A float bound, choice or default is bit-identical in the browser
 

@@ -481,7 +481,11 @@ error and always ready, and has no validation message. `setValue()` takes only
 `FileWidget` mints its value **locally**: when the user picks a file it generates
 a reference — the file's own name compressed to bare ASCII (its first 15
 characters at most), a UUID, and the file's lowercased extension, as in
-`informe-anual-<uuid>.pdf` — and that is `value()`. The name is a readable label
+`informe-anual-<uuid>.pdf` — and that is `value()`. A node that restricts
+extensions keeps the one that matched; an unrestricted node keeps what follows
+the last dot only when it is 1 to 16 ASCII letters and digits, and anything else
+counts as name text, so a reference is always ASCII letters, digits, hyphens and
+dots. The name is a readable label
 only; uniqueness lives entirely in the UUID, so two picks of the same name mint
 two distinct references, and a name that keeps nothing (no ASCII survives the
 compression) mints the bare `<uuid>.pdf`.
@@ -506,7 +510,8 @@ A file field has **two origins**, and the whole design follows from keeping them
 distinct. A *local choice* is the one just described — the only source of *new*
 references. An *existing* reference is what the host already holds and plants with
 `setValue(string)` (or an array on a `multiple` node): a value from a past
-`read()`, its own store. The widget shows it declared as such — "`Current file:
+`read()`, its own store. Planting one drops any local choice whole, its cards
+and its errors included. The widget shows it declared as such — "`Current file:
 …`" with a **Replace** button, not editable and with the choose control hidden —
 and `value()`/`read()` transport it **verbatim**, so a struct with a file path
 survives an edit form untouched. What that label shows is **compacted**: the

@@ -480,6 +480,19 @@ def _bound(bound, delta, path: str, what: str):
     return inclusive
 
 
+def _writable_float(value: float, path: str) -> float:
+    # JavaScript writes a number below 1e-6 or from 1e21 up in exponent notation,
+    # text the float control's own grammar rejects, so the default could never
+    # be shown as the value it is.
+    if value != 0 and not 1e-6 <= abs(value) < 1e21:
+        raise _error(
+            path,
+            f"Float default: {value!r} is valid in pytypehint but JavaScript "
+            f"writes it in exponent notation, which a float control cannot hold")
+
+    return value
+
+
 def _file_size(bound, path: str, what: str):
     # A plain int on FileHint, already checked there for being a non-negative
     # int and for min <= max. All that is left is the one thing the core has no
@@ -1059,6 +1072,11 @@ def _plain_value(shape, value, path: str):
         _check_slider_default(shape, safe, path)
         return safe
 
+    # A select names its choices and writes no number, so only a text control
+    # is bound by what JavaScript can write.
+    if type(shape) is Float and shape.choices is None:
+        return _writable_float(value, path)
+
     # The plan is JSON, so a date/time default travels as canonical ISO text and
     # an enum member as its name — the transport their choices already take.
     if type(shape) is Date or type(shape) is Time:
@@ -1140,9 +1158,31 @@ def _field_node(field, config, path: str) -> dict:
     return node
 
 
-def _form_node(name, description, fields, config) -> dict:
+def _reject_recursion(shapes, path: str, open_structs: tuple) -> None:
+    # A plan is fully expanded, so a dataclass that contains itself has no plan.
+    # Name the field instead of descending until the interpreter's stack ends.
+    for shape in shapes:
+        if type(shape) is List:
+            _reject_recursion(shape.item, f"{path}.item", open_structs)
+        elif type(shape) is Struct:
+            if any(shape is opened for opened in open_structs):
+                raise _error(
+                    path,
+                    f"{shape.cls.__name__} contains itself; a plan is fully "
+                    f"expanded and cannot represent a recursive shape")
+
+            for f in shape.fields:
+                _reject_recursion(
+                    f.shape, f"{path}.{f.name}", (*open_structs, shape))
+
+
+def _form_node(name, description, fields, config, root=None) -> dict:
     plan = {"v": _PLAN_VERSION, "kind": "form", "name": name,
             "description": description}
+
+    for f in fields:
+        _reject_recursion(
+            f.shape, f"fields.{f.name}", () if root is None else (root,))
 
     plan["fields"] = [_field_node(f, config, "fields") for f in fields]
 
@@ -1157,7 +1197,7 @@ def plan_of(obj, *, config: WebConfig | None = None) -> dict:
             f"config must be WebConfig or None, got {type(config).__name__}")
 
     if type(obj) is Struct:
-        return _form_node(obj.cls.__name__, None, obj.fields, config)
+        return _form_node(obj.cls.__name__, None, obj.fields, config, obj)
 
     if type(obj) is Signature:
         return _form_node(obj.name, obj.doc, obj.params, config)

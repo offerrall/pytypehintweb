@@ -20,6 +20,8 @@ const ISO_MINUTES = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const FLOAT = /^-?\d+(\.\d+)?$/;
 
+const FREE_EXTENSION = /\.[a-z0-9]{1,16}$/;
+
 function isWritableFloat(value) {
     return typeof value === "number"
         && Number.isFinite(value)
@@ -53,7 +55,7 @@ function setAttributes(el, attributes) {
 
 
 function withValue(template, value) {
-    return template.replace("{value}", String(value));
+    return template.replace("{value}", () => String(value));
 }
 
 
@@ -443,21 +445,7 @@ export class FileWidget extends Widget {
     }
 
     setValue(value) {
-        if (value === null) {
-            this._clear();
-            return;
-        }
-
-        this._current = this._asReferences(value);
-        this._files = [];
-        this._refs = [];
-        this._invalid = false;
-        this._stashedCurrent = null;
-        this.input.value = "";
-
-        this._renderCurrent();
-        this._showMessage();
-        this._emitChange();
+        this._reset(value === null ? null : this._asReferences(value), null);
     }
 
     error() {
@@ -531,13 +519,13 @@ export class FileWidget extends Widget {
         return this.extensions.some((extension) => lower.endsWith(extension));
     }
 
-    _clear() {
+    _reset(current, stashed) {
+        this._current = current;
+        this._stashedCurrent = stashed;
         this._files = [];
         this._refs = [];
         this._invalid = false;
         this._oversized = null;
-        this._current = null;
-        this._stashedCurrent = null;
         this.input.value = "";
 
         this._renderCurrent();
@@ -547,37 +535,13 @@ export class FileWidget extends Widget {
     }
 
     _beginReplace() {
-        this._stashedCurrent = this._current;
-        this._current = null;
-        this._files = [];
-        this._refs = [];
-        this._invalid = false;
-        this._oversized = null;
-        this.input.value = "";
-
-        this._renderCurrent();
-        this._renderList();
-        this._showMessage();
-        this._emitChange();
+        this._reset(null, this._current);
     }
 
     _restore() {
-        if (this._stashedCurrent === null) {
-            return;
+        if (this._stashedCurrent !== null) {
+            this._reset(this._stashedCurrent, null);
         }
-
-        this._current = this._stashedCurrent;
-        this._stashedCurrent = null;
-        this._files = [];
-        this._refs = [];
-        this._invalid = false;
-        this._oversized = null;
-        this.input.value = "";
-
-        this._renderCurrent();
-        this._renderList();
-        this._showMessage();
-        this._emitChange();
     }
 
     _sizeError(file) {
@@ -608,8 +572,7 @@ export class FileWidget extends Widget {
         const lower = name.toLowerCase();
 
         if (this.extensions.length === 0) {
-            const dot = lower.lastIndexOf(".");
-            return dot === -1 ? "" : lower.slice(dot);
+            return FREE_EXTENSION.exec(lower)?.[0] ?? "";
         }
 
         return this.extensions.find((extension) => lower.endsWith(extension))

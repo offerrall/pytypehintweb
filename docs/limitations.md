@@ -1,9 +1,7 @@
 # Limitations
 
 Everything a schema carries that the browser cannot represent faithfully
-makes `plan_of()` raise `TypeError` — with one exception,
-[a recursive shape](#recursive-shapes), which meets the interpreter's stack
-limit before any check of ours can name it. Nothing is degraded silently, so the
+makes `plan_of()` raise `TypeError`. Nothing is degraded silently, so the
 limitations below are visible at plan-generation time rather than at render
 time.
 
@@ -35,6 +33,23 @@ rejecting a valid value, no silent correction — so a float slider is not offer
 rather than offered wrongly. The `float` node carries no `slider` property at
 all, so a hand-written plan that adds one is rejected as an unknown property,
 with no special rule needed.
+
+### Float defaults in exponent notation
+
+A `float` default that JavaScript writes in exponent notation — a nonzero number
+below `1e-6` in magnitude, or one from `1e21` up — is rejected:
+
+```text
+fields.x: Float default: 1e-07 is valid in pytypehint but JavaScript writes it
+in exponent notation, which a float control cannot hold
+```
+
+The float control reads plain decimal text only, so it has no way to show such a
+number as the value it is, and showing a rounded or rewritten one would be a
+silent correction. `checkPlan()` refuses the same default in a hand-written plan.
+The limit is the text control's alone: bounds and `Choices` travel whatever their
+size, and so does the default of a field with `Choices`, because a select names
+its options and writes no number.
 
 ### `decode()` scope
 
@@ -101,16 +116,12 @@ class Node:
 
 struct_of(Node)             # compiles
 struct_of(Node).to_dict()   # the child field carries a reference back to Node
-plan_of(Node)               # RecursionError
+plan_of(Node)               # TypeError: fields.child: Node contains itself; ...
 ```
 
-This is the one limit on this page that does not arrive as a `TypeError` naming
-the offending path. The recursion is caught by the interpreter's stack limit
-rather than by a check that knows what it is looking at, so what surfaces is a
-bare `RecursionError` with no field coordinates in it. Finding the cycle before
-descending into it is a check that has not been written; a recursive form has no
-representation waiting behind it either way, so what is missing is the
-diagnosis, not the feature.
+The cycle is found before the expansion starts, so the error names the field
+that leads back, through lists, unions and intermediate dataclasses alike. A
+dataclass used in several places is not a cycle and expands once per use.
 
 A form over a recursive structure needs a shape with a bound: a fixed depth
 spelled out as distinct dataclasses, or a flat `list` of nodes carrying a parent

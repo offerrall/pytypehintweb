@@ -623,7 +623,15 @@ function checkFileDefault(options, value, path) {
 }
 
 
+const WRITABLE_FLOAT = /^-?\d+(\.\d+)?$/;
+
+
 function checkFloatDefault(options, value, path) {
+    if (options.choices === null && !WRITABLE_FLOAT.test(String(value))) {
+        fail(path, "expected a number JavaScript writes as a simple decimal, "
+            + "not exponent notation");
+    }
+
     if (options.min !== null) {
         const below = options.minExclusive ? value <= options.min : value < options.min;
 

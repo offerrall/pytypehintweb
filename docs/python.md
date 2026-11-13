@@ -469,7 +469,9 @@ core when it compiles the schema, so `plan_of()` never re-checks it.
 
 Every finite double is representable in the browser, so there is no "safe float"
 check the way there is for integers: `min`, `max`, `choices` and defaults travel
-as they are. `Step` is presentation only — the stride of the `▲`/`▼` arrows —
+as they are. The one exception is the default of a field without `Choices` that
+JavaScript writes in exponent notation, which the text control cannot hold; see
+[Limitations](limitations.md#float-defaults-in-exponent-notation). `Step` is presentation only — the stride of the `▲`/`▼` arrows —
 never a validation grid.
 
 `Slider` on a `Float` is **rejected** with `TypeError: Float.slider is not

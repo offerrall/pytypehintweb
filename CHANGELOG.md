@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.3.0 - 2026-11-13
+
+The core is now `pytypehint == 1.3.0`. `@immutable` models are accepted like any
+other dataclass; a tuple is still refused with `Tuple is not supported yet`. The
+plan contract stays at `v: 1`.
+
+### Fixed
+
+- A `float` default that JavaScript writes in exponent notation (`1e-7`, `1e21`)
+  produced a plan that failed in the browser while building the widget, with no
+  path. `plan_of()` now refuses it with a `TypeError` naming the field, and
+  `checkPlan()` refuses it in a hand-written plan. Bounds, choices and the
+  default of a field with choices are unaffected.
+- A dataclass that contains itself ended in a bare `RecursionError`. `plan_of()`
+  now raises a `TypeError` naming the field that leads back.
+- A file reference containing `$&`, `` $` ``, `$'` or `$$` was shown corrupted in
+  the "Current file" label. The transported value was never affected.
+- `FileWidget.setValue()` left the card of a previously picked file on screen,
+  and its size error came back after **Replace**. Every change of origin now
+  clears the local choice the same way.
+- On a file node with no extension list, the text after the last dot of the
+  file's name reached the minted reference whatever it contained. Only 1 to 16
+  ASCII letters and digits are kept as an extension now; anything else is name
+  text.
+
 ## 1.2.3 - 2026-09-29
 
 ### Changed

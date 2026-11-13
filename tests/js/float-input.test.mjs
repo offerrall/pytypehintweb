@@ -575,3 +575,59 @@ test("stepping never writes an exponent into the control", () => {
     assert.equal(widget.input.value, "0");
     assert.equal(widget.value(), 0);
 });
+
+
+test("checkPlan refuses an exponent-only default with its path", () => {
+    const field = (value) => ({
+        v: 1, kind: "form", name: "f", description: null,
+        fields: [{
+            name: "amount", label: "a", description: null,
+            optional: false, enabled: true, hasDefault: true,
+            default: value, node: expandNode({ kind: "float" }),
+        }],
+    });
+
+    for (const bad of [1e-7, -1e-7, 9.99e-7, 1e21, -1e21, 1.5e300]) {
+        assert.throws(
+            () => checkPlan(field(bad)),
+            /^TypeError: plan\.fields\[0\]\.default: expected a number JavaScript writes as a simple decimal/);
+    }
+});
+
+
+test("a select of float choices takes an exponent-only default", () => {
+    const form = compileForm({
+        v: 1, kind: "form", name: "f", description: null,
+        fields: [{
+            name: "amount", label: "a", description: null,
+            optional: false, enabled: true, hasDefault: true, default: 1e-9,
+            node: expandNode({ kind: "float", options: { choices: [1e-9, 1e30] } }),
+        }],
+    });
+
+    assert.deepEqual(form.read(), { amount: 1e-9 });
+});
+
+
+test("checkPlan and FloatWidget agree on which numbers can be written", () => {
+    const numbers = [0, -0, 0.000001, 0.0000011, 9.99e-7, 1e-7, 5e-324, 0.1, 1.5,
+                     123456.789, 999999999999999900000, 1e21, 1.5e21, -1e-7,
+                     -0.000001, -1e21, Number.MAX_VALUE, Number.MIN_VALUE];
+
+    for (const value of numbers) {
+        const plan = {
+            v: 1, kind: "form", name: "f", description: null,
+            fields: [{
+                name: "amount", label: "a", description: null,
+                optional: false, enabled: true, hasDefault: true,
+                default: value, node: expandNode({ kind: "float" }),
+            }],
+        };
+        const accepted = (run) => {
+            try { run(); return true; } catch { return false; }
+        };
+
+        assert.equal(accepted(() => checkPlan(plan)),
+                     accepted(() => new FloatWidget({ value })), String(value));
+    }
+});

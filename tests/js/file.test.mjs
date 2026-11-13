@@ -1030,3 +1030,92 @@ test("size bounds are legal on a single node, not only a multiple one", () => {
     assert.equal(checked.fields[0].node.options.minSize, 1);
     assert.equal(checked.fields[0].node.options.maxSize, 2);
 });
+
+
+// --- fixes of 1.3.0 ----------------------------------------------------------
+
+test("a reference carrying replacement patterns is shown as it is", () => {
+    for (const reference of ["report$&final.pdf", "a$'b.pdf", "a$`b.pdf", "$$.pdf", "$1.pdf"]) {
+        const widget = new FileWidget();
+
+        widget.setValue(reference);
+
+        assert.equal(widget.current.children[0].textContent,
+                     `Current file: ${reference}`);
+    }
+});
+
+
+test("setValue() drops the cards and the errors of the pick it replaces", () => {
+    const widget = new FileWidget({ maxSize: 100 });
+
+    widget.input.files = [{ name: "picked.pdf", size: 5000 }];
+    widget.input.dispatch("change");
+    assert.equal(widget.list.children.length, 1);
+    assert.equal(widget.hasError(), true);
+
+    widget.setValue("stored.pdf");
+
+    assert.equal(widget.list.children.length, 0);
+    assert.equal(widget.list.hidden, true);
+    assert.deepEqual(widget.files(), []);
+    assert.equal(widget.value(), "stored.pdf");
+
+    widget.current.children[1].dispatch("click");          // Replace
+
+    assert.equal(widget.hasError(), false);
+    assert.equal(widget.error(), null);
+    assert.equal(widget.list.hidden, true);
+});
+
+
+test("every change of origin leaves the same clean state", () => {
+    const widget = new FileWidget({ multiple: true });
+
+    choose(widget, "a.pdf", "b.pdf");
+    widget.setValue(["one.pdf", "two.pdf"]);
+    assert.deepEqual([widget.list.children.length, widget.files().length], [0, 0]);
+
+    widget.current.children[2].dispatch("click");          // Replace
+    assert.deepEqual(widget.value(), []);
+    assert.equal(widget.restore.hidden, false);
+
+    choose(widget, "c.pdf");
+    widget.restore.dispatch("click");                      // Restore
+    assert.deepEqual(widget.value(), ["one.pdf", "two.pdf"]);
+    assert.deepEqual([widget.list.children.length, widget.files().length], [0, 0]);
+
+    widget.setValue(null);
+    assert.deepEqual(widget.value(), []);
+    assert.equal(widget.restore.hidden, true);
+});
+
+
+test("an unrestricted field keeps only a short alphanumeric extension", () => {
+    const kept = [["notes.txt", ".txt"], ["Photo.JPEG", ".jpeg"],
+                  ["archive.tar.gz", ".gz"], ["disk.7z", ".7z"]];
+
+    for (const [name, extension] of kept) {
+        const widget = new FileWidget();
+
+        choose(widget, name);
+
+        assert.match(widget.value(), REFERENCE);
+        assert.ok(widget.value().endsWith(extension), widget.value());
+    }
+});
+
+
+test("an unrestricted field keeps name text out of the reference", () => {
+    const names = ["x.Ñ ñ/..%2f é", "notes." + "A b".repeat(30), "a.b c",
+                   "trailing.", "weird.c++", "long." + "a".repeat(17), "none"];
+    const whole = new RegExp(`^(?:[a-z0-9]+(?:-[a-z0-9]+)*-)?${HASH}$`, "i");
+
+    for (const name of names) {
+        const widget = new FileWidget();
+
+        choose(widget, name);
+
+        assert.match(widget.value(), whole, name);
+    }
+});
