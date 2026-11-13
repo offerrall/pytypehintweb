@@ -1,5 +1,5 @@
-import { isValidIsoDate } from "./iso.js";
-import { ISO_TIME, fail, normalizePlan } from "./normalize.js";
+import { isValidIsoDate, isValidIsoTime } from "./iso.js";
+import { fail, normalizePlan } from "./normalize.js";
 import { onSliderGrid, sliderReaches } from "./slider.js";
 
 export { sliderReaches } from "./slider.js";
@@ -128,81 +128,135 @@ function compilePattern(pattern, path) {
 }
 
 
-function checkStringChoices(options, regexp, path) {
-    if (options.choices === null) {
-        return;
+function checkStrLimits(options, regexp, value, path) {
+    const length = stringLength(value);
+
+    if (options.minLength !== null && length < options.minLength) {
+        fail(path, `is shorter than minLength ${options.minLength}`);
     }
 
-    options.choices.forEach((choice, i) => {
-        const at = `${path}.options.choices[${i}]`;
-        const length = stringLength(choice);
+    if (options.maxLength !== null && length > options.maxLength) {
+        fail(path, `is longer than maxLength ${options.maxLength}`);
+    }
 
-        if (options.minLength !== null && length < options.minLength) {
-            fail(at, `is shorter than minLength ${options.minLength}`);
-        }
-
-        if (options.maxLength !== null && length > options.maxLength) {
-            fail(at, `is longer than maxLength ${options.maxLength}`);
-        }
-
-        if (regexp !== null && !regexp.test(choice)) {
-            fail(at, "does not match the declared pattern");
-        }
-    });
+    if (regexp !== null && !regexp.test(value)) {
+        fail(path, "does not match the declared pattern");
+    }
 }
 
 
-function checkIntChoices(options, path) {
-    if (options.choices === null) {
-        return;
+function checkStrDefault(options, value, path) {
+    const regexp = options.pattern === null
+        ? null
+        : compilePattern(options.pattern, path);
+
+    checkStrLimits(options, regexp, value, path);
+
+    if (options.choices !== null && !options.choices.includes(value)) {
+        fail(path, "expected one of the declared choices");
     }
-
-    options.choices.forEach((choice, i) => {
-        const at = `${path}.options.choices[${i}]`;
-
-        if (options.min !== null && choice < options.min) {
-            fail(at, `is below min ${options.min}`);
-        }
-
-        if (options.max !== null && choice > options.max) {
-            fail(at, `is above max ${options.max}`);
-        }
-
-        if (options.multipleOf !== null && choice % options.multipleOf !== 0) {
-            fail(at, `is not a multiple of ${options.multipleOf}`);
-        }
-    });
 }
 
 
-function checkFloatChoices(options, path) {
-    if (options.choices === null) {
-        return;
+function checkIntLimits(options, value, path) {
+    if (options.min !== null && value < options.min) {
+        fail(path, `is below min ${options.min}`);
     }
 
-    options.choices.forEach((choice, i) => {
-        const at = `${path}.options.choices[${i}]`;
+    if (options.max !== null && value > options.max) {
+        fail(path, `is above max ${options.max}`);
+    }
 
-        if (options.min !== null) {
-            const below = options.minExclusive
-                ? choice <= options.min
-                : choice < options.min;
+    if (options.multipleOf !== null && value % options.multipleOf !== 0) {
+        fail(path, `is not a multiple of ${options.multipleOf}`);
+    }
+}
 
-            if (below) {
-                fail(at, `is below min ${options.min}`);
-            }
+
+function checkIntDefault(options, value, path) {
+    checkIntLimits(options, value, path);
+
+    if (options.choices !== null && !options.choices.includes(value)) {
+        fail(path, "expected one of the declared choices");
+    }
+
+    if (options.slider) {
+        const step = options.step === null ? 1 : options.step;
+
+        if (!onSliderGrid(value, options.min, options.max, step)) {
+            fail(path,
+                 `is not on the slider grid stepping by ${step} from `
+                 + `${options.min}`);
         }
+    }
+}
 
-        if (options.max !== null) {
-            const above = options.maxExclusive
-                ? choice >= options.max
-                : choice > options.max;
 
-            if (above) {
-                fail(at, `is above max ${options.max}`);
-            }
+const WRITABLE_FLOAT = /^-?\d+(\.\d+)?$/;
+
+
+function checkFloatLimits(options, value, path) {
+    if (options.min !== null) {
+        const below = options.minExclusive ? value <= options.min : value < options.min;
+
+        if (below) {
+            fail(path, `is below min ${options.min}`);
         }
-    });
+    }
+
+    if (options.max !== null) {
+        const above = options.maxExclusive ? value >= options.max : value > options.max;
+
+        if (above) {
+            fail(path, `is above max ${options.max}`);
+        }
+    }
+}
+
+
+function checkFloatDefault(options, value, path) {
+    if (options.choices === null && !WRITABLE_FLOAT.test(String(value))) {
+        fail(path, "expected a number JavaScript writes as a simple decimal, "
+            + "not exponent notation");
+    }
+
+    checkFloatLimits(options, value, path);
+
+    if (options.choices !== null && !options.choices.includes(value)) {
+        fail(path, "expected one of the declared choices");
+    }
+}
+
+
+function checkIsoLimits(options, value, path) {
+    if (options.min !== null) {
+        const below = options.minExclusive === true
+            ? value <= options.min
+            : value < options.min;
+
+        if (below) {
+            fail(path, `is before min ${options.min}`);
+        }
+    }
+
+    if (options.max !== null) {
+        const above = options.maxExclusive === true
+            ? value >= options.max
+            : value > options.max;
+
+        if (above) {
+            fail(path, `is after max ${options.max}`);
+        }
+    }
+}
+
+
+function checkIsoDefault(options, value, path) {
+    checkIsoLimits(options, value, path);
+
+    if (options.choices !== null && !options.choices.includes(value)) {
+        fail(path, "expected one of the declared choices");
+    }
 }
 
 
@@ -240,7 +294,10 @@ function checkStrNode(node, path) {
         ? null
         : compilePattern(options.pattern, `${path}.options.pattern`);
 
-    checkStringChoices(options, regexp, path);
+    if (options.choices !== null) {
+        options.choices.forEach((choice, i) => checkStrLimits(
+            options, regexp, choice, `${path}.options.choices[${i}]`));
+    }
 }
 
 
@@ -277,7 +334,10 @@ function checkIntNode(node, path) {
     }
 
     checkSlider(options, path);
-    checkIntChoices(options, path);
+    if (options.choices !== null) {
+        options.choices.forEach((choice, i) => checkIntLimits(
+            options, choice, `${path}.options.choices[${i}]`));
+    }
 }
 
 
@@ -308,63 +368,14 @@ function checkFloatNode(node, path) {
              "choices and placeholder ask for different controls");
     }
 
-    checkFloatChoices(options, path);
+    if (options.choices !== null) {
+        options.choices.forEach((choice, i) => checkFloatLimits(
+            options, choice, `${path}.options.choices[${i}]`));
+    }
 }
 
 
-function checkIsoChoices(options, path) {
-    if (options.choices === null) {
-        return;
-    }
-
-    options.choices.forEach((choice, i) => {
-        const at = `${path}.options.choices[${i}]`;
-
-        if (options.min !== null) {
-            const below = options.minExclusive === true
-                ? choice <= options.min
-                : choice < options.min;
-
-            if (below) {
-                fail(at, `is before min ${options.min}`);
-            }
-        }
-
-        if (options.max !== null) {
-            const above = options.maxExclusive === true
-                ? choice >= options.max
-                : choice > options.max;
-
-            if (above) {
-                fail(at, `is after max ${options.max}`);
-            }
-        }
-    });
-}
-
-
-function checkDateNode(node, path) {
-    const options = node.options;
-
-    checkTemplate(options.invalidMessage, `${path}.options.invalidMessage`, false);
-    checkTemplate(options.minMessage, `${path}.options.minMessage`, true);
-    checkTemplate(options.maxMessage, `${path}.options.maxMessage`, true);
-    checkChoices(options.choices, `${path}.options.choices`);
-
-    if (options.min !== null && options.max !== null && options.min > options.max) {
-        fail(`${path}.options.min`, "min and max leave no representable value");
-    }
-
-    if (options.choices !== null && options.placeholder !== null) {
-        fail(`${path}.options`,
-             "choices and placeholder ask for different controls");
-    }
-
-    checkIsoChoices(options, path);
-}
-
-
-function checkTimeNode(node, path) {
+function checkIsoNode(node, path) {
     const options = node.options;
 
     checkTemplate(options.invalidMessage, `${path}.options.invalidMessage`, false);
@@ -388,7 +399,10 @@ function checkTimeNode(node, path) {
              "choices and placeholder ask for different controls");
     }
 
-    checkIsoChoices(options, path);
+    if (options.choices !== null) {
+        options.choices.forEach((choice, i) => checkIsoLimits(
+            options, choice, `${path}.options.choices[${i}]`));
+    }
 }
 
 
@@ -444,13 +458,8 @@ function checkNode(node, path) {
         return;
     }
 
-    if (node.kind === "date") {
-        checkDateNode(node, path);
-        return;
-    }
-
-    if (node.kind === "time") {
-        checkTimeNode(node, path);
+    if (node.kind === "date" || node.kind === "time") {
+        checkIsoNode(node, path);
         return;
     }
 
@@ -521,60 +530,6 @@ function checkNode(node, path) {
 }
 
 
-function checkStrDefault(options, value, path) {
-    const length = stringLength(value);
-
-    if (options.minLength !== null && length < options.minLength) {
-        fail(path, `is shorter than minLength ${options.minLength}`);
-    }
-
-    if (options.maxLength !== null && length > options.maxLength) {
-        fail(path, `is longer than maxLength ${options.maxLength}`);
-    }
-
-    if (options.pattern !== null) {
-        const regexp = compilePattern(options.pattern, `${path}`);
-
-        if (regexp !== null && !regexp.test(value)) {
-            fail(path, "does not match the declared pattern");
-        }
-    }
-
-    if (options.choices !== null && !options.choices.includes(value)) {
-        fail(path, "expected one of the declared choices");
-    }
-}
-
-
-function checkIntDefault(options, value, path) {
-    if (options.min !== null && value < options.min) {
-        fail(path, `is below min ${options.min}`);
-    }
-
-    if (options.max !== null && value > options.max) {
-        fail(path, `is above max ${options.max}`);
-    }
-
-    if (options.multipleOf !== null && value % options.multipleOf !== 0) {
-        fail(path, `is not a multiple of ${options.multipleOf}`);
-    }
-
-    if (options.choices !== null && !options.choices.includes(value)) {
-        fail(path, "expected one of the declared choices");
-    }
-
-    if (options.slider) {
-        const step = options.step === null ? 1 : options.step;
-
-        if (!onSliderGrid(value, options.min, options.max, step)) {
-            fail(path,
-                 `is not on the slider grid stepping by ${step} from `
-                 + `${options.min}`);
-        }
-    }
-}
-
-
 function fileReferenceAccepted(extensions, reference) {
     if (extensions.length === 0) {
         return true;
@@ -623,64 +578,6 @@ function checkFileDefault(options, value, path) {
 }
 
 
-const WRITABLE_FLOAT = /^-?\d+(\.\d+)?$/;
-
-
-function checkFloatDefault(options, value, path) {
-    if (options.choices === null && !WRITABLE_FLOAT.test(String(value))) {
-        fail(path, "expected a number JavaScript writes as a simple decimal, "
-            + "not exponent notation");
-    }
-
-    if (options.min !== null) {
-        const below = options.minExclusive ? value <= options.min : value < options.min;
-
-        if (below) {
-            fail(path, `is below min ${options.min}`);
-        }
-    }
-
-    if (options.max !== null) {
-        const above = options.maxExclusive ? value >= options.max : value > options.max;
-
-        if (above) {
-            fail(path, `is above max ${options.max}`);
-        }
-    }
-
-    if (options.choices !== null && !options.choices.includes(value)) {
-        fail(path, "expected one of the declared choices");
-    }
-}
-
-
-function checkIsoDefault(options, value, path) {
-    if (options.min !== null) {
-        const below = options.minExclusive === true
-            ? value <= options.min
-            : value < options.min;
-
-        if (below) {
-            fail(path, `is before min ${options.min}`);
-        }
-    }
-
-    if (options.max !== null) {
-        const above = options.maxExclusive === true
-            ? value >= options.max
-            : value > options.max;
-
-        if (above) {
-            fail(path, `is after max ${options.max}`);
-        }
-    }
-
-    if (options.choices !== null && !options.choices.includes(value)) {
-        fail(path, "expected one of the declared choices");
-    }
-}
-
-
 function checkInitial(node, value, path) {
     if (node.kind === "str") {
         if (typeof value !== "string") {
@@ -719,7 +616,7 @@ function checkInitial(node, value, path) {
     }
 
     if (node.kind === "time") {
-        if (typeof value !== "string" || !ISO_TIME.test(value)) {
+        if (!isValidIsoTime(value)) {
             fail(path, "expected an ISO time for time node");
         }
 

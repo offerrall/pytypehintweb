@@ -981,6 +981,11 @@ Invariants:
 
 `minItems` and `maxItems` constrain the value; they never create rows.
 
+There is no tuple node. A tuple is an array on the wire, and `plan_of()` emits
+the two tuple forms it supports as this node: `tuple[X, ...]` with the tuple's
+own bounds, and a fixed tuple whose positions are all the same with `minItems`
+and `maxItems` both equal to its size. See [Tuples](python.md#tuples).
+
 ## Object nodes
 
 Required: `kind`, `fields`. Each field carries the full field shape.
@@ -1245,12 +1250,15 @@ plan.fields[0].default: is not on the slider grid stepping by 5 from 0
 A lone object branch never carries `$type`.
 
 Branches are grouped by the **JSON type** a value arrives as, not by Python
-type. Two groups share a wire type today: a `3` and a `3.0` are the same JSON
-number, so `int` and `float` collide; and `str`, `date` and `time` all travel as
+type. Three groups share a wire type today: a `3` and a `3.0` are the same JSON
+number, so `int` and `float` collide; `str`, `date` and `time` all travel as
 a JSON string (date and time as ISO text), so any union mixing two of them
-collides. Every branch in a colliding group travels `wrapped`, naming itself
-with `$type` (`"int"`/`"float"`, or `"str"`/`"date"`/`"time"` — the core's
-`option_id()`), so the browser can round-trip the distinction JSON would lose:
+collides; and a list and a tuple are both a JSON array, so a tuple collides with
+a list and with any other tuple, as two lists always did. Every branch in a
+colliding group travels `wrapped`, naming itself with `$type`
+(`"int"`/`"float"`, `"str"`/`"date"`/`"time"`, or `"list[int]"`/`"tuple[int,
+...]"` — the core's `option_id()`), so the browser can round-trip the
+distinction JSON would lose:
 
 ```javascript
 // int | float, the float branch

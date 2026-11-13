@@ -16,6 +16,7 @@ plan.py             Python adapter: schema -> expanded plan
 decode.py           Python adapter: schema.decode() plus file-reference resolution
 static/defaults.js  official runtime defaults and known property names
 static/slider.js    shared, dependency-free slider position arithmetic
+static/iso.js       shared, dependency-free canonical date and time validation
 static/normalize.js structural validation and normalization
 static/contract.js  semantic validation of the normalized plan
 static/form.js      orchestration: widgets, initial values, transport
@@ -29,7 +30,9 @@ Each layer depends only on the ones above it: the core knows nothing about the
 web layer, and the widgets know nothing about the plan protocol. `slider.js` is
 a dependency-free leaf whose position arithmetic (`firstSliderValue`,
 `sliderReaches`) is shared by `contract.js` (validation) and `inputs.js`
-(`IntWidget` initialization), so the congruence is implemented once.
+(`IntWidget` initialization), so the congruence is implemented once. `iso.js`
+is the same kind of leaf for canonical dates and times: the validator and the
+date and time widgets read one definition of each.
 
 ```text
 forward:  function/dataclass -> pytypehint schema -> plan_of() -> expanded plan

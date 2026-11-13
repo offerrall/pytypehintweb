@@ -18,7 +18,7 @@ The modules ship inside the Python package, in the directory exposed as
 | `normalize.js` | structural validation and normalization of a plan           |
 | `defaults.js`  | the official runtime defaults and the known property names  |
 | `slider.js`    | shared slider position arithmetic (`firstSliderValue`, `sliderReaches`) |
-| `iso.js`       | shared canonical-date validation (`isValidIsoDate`)         |
+| `iso.js`       | shared canonical date and time validation (`isValidIsoDate`, `isValidIsoTime`) |
 | `fields.js`    | `Widget`, `Field`, `GroupWidget`, `ListWidget`, `ChoiceWidget` |
 | `inputs.js`    | `StrWidget`, `IntWidget`, `FloatWidget`, `DateWidget`, `TimeWidget`, `BoolWidget`, `FileWidget`, `StrChoiceWidget`, `IntChoiceWidget`, `FloatChoiceWidget` |
 | `widgets.css`  | the optional stylesheet                                     |
@@ -383,7 +383,9 @@ Unparseable text (`abc`, `1.5`) and unsafe integer text both read as `null`;
 only safe integers become numbers in the transport object. The stepper arrows
 (and `ArrowUp`/`ArrowDown`) are a write command, not a read: on unparseable text
 they start from the base value and replace it — a visible response to an explicit
-action, not a silent correction.
+action, not a silent correction. A step whose result would leave the safe
+integer range is not taken: the control keeps its value and no change is
+announced.
 
 `FloatWidget` parses with the same honesty, against an explicit grammar:
 exactly `-?\d+(\.\d+)?` over the trimmed text — no scientific notation, no bare

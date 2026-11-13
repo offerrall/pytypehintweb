@@ -123,16 +123,30 @@ class FakeElement {
         }
     }
 
-    dispatch(type) {
-        for (const callback of [...(this.listeners.get(type) ?? [])]) {
-            callback();
-        }
+    dispatch(type, properties = {}) {
+        this.dispatchEvent({
+            type,
+            defaultPrevented: false,
+            preventDefault() {
+                this.defaultPrevented = true;
+            },
+            ...properties,
+        });
     }
 
     dispatchEvent(event) {
-        this.dispatch(event.type);
+        for (const callback of [...(this.listeners.get(event.type) ?? [])]) {
+            callback(event);
+        }
+
         return true;
     }
+
+    click() {
+        this.dispatch("click");
+    }
+
+    focus() {}
 }
 
 

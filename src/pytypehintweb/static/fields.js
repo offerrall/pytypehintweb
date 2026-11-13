@@ -164,12 +164,7 @@ function checkControl(control) {
         return null;
     }
 
-    const elementType = globalThis.HTMLElement ?? globalThis.Element;
-    const isElement = elementType === undefined
-        ? typeof control === "object"
-        : control instanceof elementType;
-
-    if (!isElement) {
+    if (!(control instanceof HTMLElement)) {
         throw new TypeError("Widget.control() must return an HTMLElement or null");
     }
 
@@ -492,9 +487,7 @@ export class ChoiceWidget extends Widget {
 
         const sibling = direction < 0 ? this.next : this.previous;
 
-        if (typeof sibling.focus === "function") {
-            sibling.focus();
-        }
+        sibling.focus();
     }
 
     _render() {

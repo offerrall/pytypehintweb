@@ -3,7 +3,7 @@ import {
     TIME_DEFAULTS,
 } from "./defaults.js";
 import { Widget, createMessage, renderMessage } from "./fields.js";
-import { isValidIsoDate } from "./iso.js";
+import { isValidIsoDate, isValidIsoTime } from "./iso.js";
 import {
     firstSliderValue, onSliderGrid, sliderAligned, sliderIndexOf,
     sliderLastIndex, sliderValueAt,
@@ -12,9 +12,6 @@ import {
 const INTEGER = /^-?\d+$/;
 
 export const COLOR_PATTERN = "#[0-9a-fA-F]{6}";
-
-const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
-const isIsoTime = (value) => ISO_TIME.test(value);
 
 const ISO_MINUTES = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -223,6 +220,34 @@ export class BoolWidget extends Widget {
 }
 
 
+class InputWidget extends Widget {
+    constructor() {
+        super();
+
+        this.touched = false;
+    }
+
+    control() {
+        return this.input;
+    }
+
+    _handleInput() {
+        this.touched = true;
+        this._showMessage();
+        this._emitChange();
+    }
+
+    showErrors() {
+        this.touched = true;
+        this._showMessage();
+    }
+
+    _showMessage() {
+        renderMessage(this.message, this.input, this.touched ? this.error() : null);
+    }
+}
+
+
 const FILE_SLUG_LIMIT = 15;
 
 const ASCII_FOLDINGS = {
@@ -277,7 +302,7 @@ export function mintFileReference(name, extension) {
 }
 
 
-export class FileWidget extends Widget {
+export class FileWidget extends InputWidget {
     constructor({
         extensions = FILE_DEFAULTS.extensions,
         invalidMessage = FILE_DEFAULTS.invalidMessage,
@@ -324,7 +349,6 @@ export class FileWidget extends Widget {
         this._current = null;
         this._stashedCurrent = null;
         this._uploaded = new Set();
-        this.touched = false;
 
         this.el = document.createElement("div");
         this.el.className = "pth-file";
@@ -384,10 +408,6 @@ export class FileWidget extends Widget {
         this._renderCurrent();
         this._renderList();
         this._showMessage();
-    }
-
-    control() {
-        return this.input;
     }
 
     file() {
@@ -682,32 +702,24 @@ export class FileWidget extends Widget {
             this._ingest(picker.files ? Array.from(picker.files) : [], true);
         });
 
-        if (typeof picker.click === "function") {
-            picker.click();
-        }
+        picker.click();
     }
 
     _setupDrag() {
         let depth = 0;
 
         this.row.addEventListener("dragenter", (event) => {
-            if (event) {
-                event.preventDefault();
-            }
+            event.preventDefault();
             depth += 1;
             this.row.classList.add("pth-dragging");
         });
 
         this.row.addEventListener("dragover", (event) => {
-            if (event) {
-                event.preventDefault();
-            }
+            event.preventDefault();
         });
 
         this.row.addEventListener("dragleave", (event) => {
-            if (event) {
-                event.preventDefault();
-            }
+            event.preventDefault();
             depth -= 1;
             if (depth <= 0) {
                 depth = 0;
@@ -716,12 +728,10 @@ export class FileWidget extends Widget {
         });
 
         this.row.addEventListener("drop", (event) => {
-            if (event) {
-                event.preventDefault();
-            }
+            event.preventDefault();
             depth = 0;
             this.row.classList.remove("pth-dragging");
-            const dropped = event && event.dataTransfer
+            const dropped = event.dataTransfer
                 ? Array.from(event.dataTransfer.files)
                 : [];
             this._ingest(dropped, true);
@@ -819,20 +829,10 @@ export class FileWidget extends Widget {
         replace.addEventListener("click", () => this._beginReplace());
         this.current.append(replace);
     }
-
-    showErrors() {
-        this.touched = true;
-        this._showMessage();
-    }
-
-    _showMessage() {
-        renderMessage(
-            this.message, this.input, this.touched ? this.error() : null);
-    }
 }
 
 
-export class StrWidget extends Widget {
+export class StrWidget extends InputWidget {
     constructor({
         minLength = STR_DEFAULTS.minLength,
         maxLength = STR_DEFAULTS.maxLength,
@@ -913,17 +913,14 @@ export class StrWidget extends Widget {
         this.message = createMessage("pth-str-message");
         this.el.append(this.message);
 
-        this.touched = false;
         this.input.addEventListener("input", () => this._handleInput());
         this._syncPicker();
         this._showMessage();
     }
 
     _handleInput() {
-        this.touched = true;
         this._syncPicker();
-        this._showMessage();
-        this._emitChange();
+        super._handleInput();
     }
 
     _syncPicker() {
@@ -936,10 +933,6 @@ export class StrWidget extends Widget {
         if (this._matchesPattern(value)) {
             this.picker.value = value.toLowerCase();
         }
-    }
-
-    control() {
-        return this.input;
     }
 
     value() {
@@ -991,19 +984,81 @@ export class StrWidget extends Widget {
 
         return null;
     }
+}
 
-    showErrors() {
-        this.touched = true;
-        this._showMessage();
+
+class NumberInput extends InputWidget {
+    _stepper(increaseLabel, decreaseLabel) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "pth-number";
+        wrapper.append(this.input);
+
+        const controls = document.createElement("div");
+        controls.className = "pth-number-controls";
+        controls.append(
+            this._stepButton("▲", increaseLabel, 1),
+            this._stepButton("▼", decreaseLabel, -1));
+        wrapper.append(controls);
+
+        this.input.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowUp") {
+                event.preventDefault();
+                this._step(1);
+            } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                this._step(-1);
+            }
+        });
+
+        return wrapper;
     }
 
-    _showMessage() {
-        renderMessage(this.message, this.input, this.touched ? this.error() : null);
+    _stepButton(glyph, label, direction) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "pth-number-btn";
+        button.textContent = glyph;
+        button.setAttribute("aria-label", label);
+        button.addEventListener("click", () => this._step(direction));
+
+        return button;
+    }
+
+    _step(direction) {
+        const current = this.number() ?? 0;
+        let next = current + this.stepAmount * direction;
+
+        if (this.max !== null && next > this.max) {
+            next = this.max;
+        }
+
+        if (this.min !== null && next < this.min) {
+            next = this.min;
+        }
+
+        if (next === current || !this._canHold(next)) {
+            return;
+        }
+
+        this.input.value = String(next);
+        this.input.dispatchEvent(new Event("input"));
+    }
+
+    number() {
+        return this._parse().value;
+    }
+
+    value() {
+        return this._parse().value;
+    }
+
+    isEmpty() {
+        return this.input.value.trim() === "";
     }
 }
 
 
-export class IntWidget extends Widget {
+export class IntWidget extends NumberInput {
     constructor({
         min = INT_DEFAULTS.min,
         max = INT_DEFAULTS.max,
@@ -1080,43 +1135,13 @@ export class IntWidget extends Widget {
             setAttributes(this.input, { placeholder });
             this.input.value = value === "" ? "" : String(value);
 
-            const wrapper = document.createElement("div");
-            wrapper.className = "pth-number";
-            wrapper.append(this.input);
-
-            const controls = document.createElement("div");
-            controls.className = "pth-number-controls";
-            controls.append(
-                this._stepButton("▲", increaseLabel, 1),
-                this._stepButton("▼", decreaseLabel, -1));
-            wrapper.append(controls);
-
-            this.el.append(wrapper);
-
-            this.input.addEventListener("keydown", (event) => {
-                if (!event) {
-                    return;
-                }
-
-                if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    this._step(1);
-                } else if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    this._step(-1);
-                }
-            });
+            this.el.append(this._stepper(increaseLabel, decreaseLabel));
         }
 
         this.message = createMessage("pth-int-message");
         this.el.append(this.message);
 
-        this.touched = false;
-        this.input.addEventListener("input", () => {
-            this.touched = true;
-            this._showMessage();
-            this._emitChange();
-        });
+        this.input.addEventListener("input", () => this._handleInput());
         this._showMessage();
     }
 
@@ -1142,39 +1167,8 @@ export class IntWidget extends Widget {
         return first;
     }
 
-    _stepButton(glyph, label, direction) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "pth-number-btn";
-        button.textContent = glyph;
-        button.setAttribute("aria-label", label);
-        button.addEventListener("click", () => this._step(direction));
-
-        return button;
-    }
-
-    _step(direction) {
-        const current = this.number() ?? 0;
-        let next = current + this.stepAmount * direction;
-
-        if (this.max !== null && next > this.max) {
-            next = this.max;
-        }
-
-        if (this.min !== null && next < this.min) {
-            next = this.min;
-        }
-
-        if (next === current) {
-            return;
-        }
-
-        this.input.value = String(next);
-        this.input.dispatchEvent(new Event("input"));
-    }
-
-    control() {
-        return this.input;
+    _canHold(value) {
+        return Number.isSafeInteger(value);
     }
 
     _parse() {
@@ -1201,14 +1195,6 @@ export class IntWidget extends Widget {
                                 Number(integer))
                 : Number(integer),
         };
-    }
-
-    number() {
-        return this._parse().value;
-    }
-
-    value() {
-        return this._parse().value;
     }
 
     _check(value) {
@@ -1248,10 +1234,6 @@ export class IntWidget extends Widget {
         this._showMessage();
     }
 
-    isEmpty() {
-        return this.input.value.trim() === "";
-    }
-
     error() {
         const state = this._parse();
 
@@ -1284,11 +1266,6 @@ export class IntWidget extends Widget {
         return null;
     }
 
-    showErrors() {
-        this.touched = true;
-        this._showMessage();
-    }
-
     _showMessage() {
         if (this.readout !== null || this.sliderIndexed) {
             const shown = String(this.value());
@@ -1302,12 +1279,12 @@ export class IntWidget extends Widget {
             }
         }
 
-        renderMessage(this.message, this.input, this.touched ? this.error() : null);
+        super._showMessage();
     }
 }
 
 
-export class FloatWidget extends Widget {
+export class FloatWidget extends NumberInput {
     constructor({
         min = FLOAT_DEFAULTS.min,
         max = FLOAT_DEFAULTS.max,
@@ -1355,78 +1332,17 @@ export class FloatWidget extends Widget {
         setAttributes(this.input, { placeholder });
         this.input.value = value === "" ? "" : String(value);
 
-        const wrapper = document.createElement("div");
-        wrapper.className = "pth-number";
-        wrapper.append(this.input);
-
-        const controls = document.createElement("div");
-        controls.className = "pth-number-controls";
-        controls.append(
-            this._stepButton("▲", increaseLabel, 1),
-            this._stepButton("▼", decreaseLabel, -1));
-        wrapper.append(controls);
-
-        this.el.append(wrapper);
-
-        this.input.addEventListener("keydown", (event) => {
-            if (!event) {
-                return;
-            }
-
-            if (event.key === "ArrowUp") {
-                event.preventDefault();
-                this._step(1);
-            } else if (event.key === "ArrowDown") {
-                event.preventDefault();
-                this._step(-1);
-            }
-        });
+        this.el.append(this._stepper(increaseLabel, decreaseLabel));
 
         this.message = createMessage("pth-float-message");
         this.el.append(this.message);
 
-        this.touched = false;
-        this.input.addEventListener("input", () => {
-            this.touched = true;
-            this._showMessage();
-            this._emitChange();
-        });
+        this.input.addEventListener("input", () => this._handleInput());
         this._showMessage();
     }
 
-    _stepButton(glyph, label, direction) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "pth-number-btn";
-        button.textContent = glyph;
-        button.setAttribute("aria-label", label);
-        button.addEventListener("click", () => this._step(direction));
-
-        return button;
-    }
-
-    _step(direction) {
-        const current = this.number() ?? 0;
-        let next = current + this.stepAmount * direction;
-
-        if (this.max !== null && next > this.max) {
-            next = this.max;
-        }
-
-        if (this.min !== null && next < this.min) {
-            next = this.min;
-        }
-
-        if (next === current || !isWritableFloat(next)) {
-            return;
-        }
-
-        this.input.value = String(next);
-        this.input.dispatchEvent(new Event("input"));
-    }
-
-    control() {
-        return this.input;
+    _canHold(value) {
+        return isWritableFloat(value);
     }
 
     _parse() {
@@ -1449,14 +1365,6 @@ export class FloatWidget extends Widget {
         return { kind: "value", value: number };
     }
 
-    number() {
-        return this._parse().value;
-    }
-
-    value() {
-        return this._parse().value;
-    }
-
     _check(value) {
         if (value === null) {
             return;
@@ -1477,10 +1385,6 @@ export class FloatWidget extends Widget {
     _apply(value) {
         this.input.value = value === null ? "" : String(value);
         this._showMessage();
-    }
-
-    isEmpty() {
-        return this.input.value.trim() === "";
     }
 
     error() {
@@ -1522,19 +1426,10 @@ export class FloatWidget extends Widget {
 
         return null;
     }
-
-    showErrors() {
-        this.touched = true;
-        this._showMessage();
-    }
-
-    _showMessage() {
-        renderMessage(this.message, this.input, this.touched ? this.error() : null);
-    }
 }
 
 
-class IsoInput extends Widget {
+class IsoInput extends InputWidget {
     constructor({
         type, isValid, className, messageClass, what,
         min, max, minExclusive, maxExclusive, step,
@@ -1564,17 +1459,8 @@ class IsoInput extends Widget {
         this.message = createMessage(messageClass);
         this.el.append(this.message);
 
-        this.touched = false;
-        this.input.addEventListener("input", () => {
-            this.touched = true;
-            this._showMessage();
-            this._emitChange();
-        });
+        this.input.addEventListener("input", () => this._handleInput());
         this._showMessage();
-    }
-
-    control() {
-        return this.input;
     }
 
     _text() {
@@ -1636,15 +1522,6 @@ class IsoInput extends Widget {
 
         return null;
     }
-
-    showErrors() {
-        this.touched = true;
-        this._showMessage();
-    }
-
-    _showMessage() {
-        renderMessage(this.message, this.input, this.touched ? this.error() : null);
-    }
 }
 
 
@@ -1681,7 +1558,7 @@ export class TimeWidget extends IsoInput {
         value = "",
     } = {}) {
         super({
-            type: "time", isValid: isIsoTime, className: "pth-time",
+            type: "time", isValid: isValidIsoTime, className: "pth-time",
             messageClass: "pth-time-message", what: "TimeWidget",
             min, max, minExclusive, maxExclusive, step: 1,
             placeholder, invalidMessage, minMessage, maxMessage, value,

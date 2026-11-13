@@ -192,3 +192,81 @@ test("a slider renders no stepper buttons to label", () => {
 
     assert.equal(stepButtons(widget).length, 0);
 });
+
+
+// --- stepping stays inside the safe integer range ---------------------------
+//
+// One past either end of the safe range is a number JavaScript can still add
+// up to, but the control's own grammar reads it back as unsafe. A step that
+// would land there is refused, the same way a step past min or max is.
+
+test("stepping up at the largest safe integer leaves the value alone", () => {
+    const widget = new IntWidget({ value: Number.MAX_SAFE_INTEGER });
+    let changes = 0;
+    widget.onChange(() => { changes += 1; });
+
+    stepButtons(widget)[0].dispatch("click");
+
+    assert.equal(widget.input.value, "9007199254740991");
+    assert.equal(widget.value(), Number.MAX_SAFE_INTEGER);
+    assert.equal(widget.error(), null);
+    assert.equal(changes, 0);
+});
+
+
+test("stepping down at the smallest safe integer leaves the value alone", () => {
+    const widget = new IntWidget({ value: Number.MIN_SAFE_INTEGER });
+    let changes = 0;
+    widget.onChange(() => { changes += 1; });
+
+    stepButtons(widget)[1].dispatch("click");
+
+    assert.equal(widget.input.value, "-9007199254740991");
+    assert.equal(widget.value(), Number.MIN_SAFE_INTEGER);
+    assert.equal(widget.error(), null);
+    assert.equal(changes, 0);
+});
+
+
+test("a stride that would overshoot the safe range is refused whole", () => {
+    const up = new IntWidget({ step: 5, value: Number.MAX_SAFE_INTEGER - 2 });
+    up._step(1);
+    assert.equal(up.value(), Number.MAX_SAFE_INTEGER - 2);
+
+    const down = new IntWidget({ step: 5, value: Number.MIN_SAFE_INTEGER + 2 });
+    down._step(-1);
+    assert.equal(down.value(), Number.MIN_SAFE_INTEGER + 2);
+});
+
+
+test("stepping away from either end of the safe range still works", () => {
+    const top = new IntWidget({ value: Number.MAX_SAFE_INTEGER });
+    top._step(-1);
+    assert.equal(top.value(), Number.MAX_SAFE_INTEGER - 1);
+
+    const bottom = new IntWidget({ value: Number.MIN_SAFE_INTEGER });
+    bottom._step(1);
+    assert.equal(bottom.value(), Number.MIN_SAFE_INTEGER + 1);
+});
+
+
+// --- arrow keys step like the buttons ---------------------------------------
+
+test("ArrowUp and ArrowDown step the value and keep the caret from moving", () => {
+    const widget = new IntWidget({ step: 5, value: 10 });
+    const prevented = [];
+    const press = (key) => widget.input.dispatch("keydown", {
+        key, preventDefault: () => prevented.push(key),
+    });
+
+    press("ArrowUp");
+    assert.equal(widget.value(), 15);
+
+    press("ArrowDown");
+    press("ArrowDown");
+    assert.equal(widget.value(), 5);
+
+    press("a");
+    assert.equal(widget.value(), 5);
+    assert.deepEqual(prevented, ["ArrowUp", "ArrowDown", "ArrowDown"]);
+});

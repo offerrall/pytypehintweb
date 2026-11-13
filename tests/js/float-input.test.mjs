@@ -631,3 +631,23 @@ test("checkPlan and FloatWidget agree on which numbers can be written", () => {
                      accepted(() => new FloatWidget({ value })), String(value));
     }
 });
+
+
+test("ArrowUp and ArrowDown step a float and keep the caret from moving", () => {
+    const widget = new FloatWidget({ step: 0.5, value: 1 });
+    const prevented = [];
+    const press = (key) => widget.input.dispatch("keydown", {
+        key, preventDefault: () => prevented.push(key),
+    });
+
+    press("ArrowUp");
+    assert.equal(widget.value(), 1.5);
+
+    press("ArrowDown");
+    press("ArrowDown");
+    assert.equal(widget.value(), 0.5);
+
+    press("Enter");
+    assert.equal(widget.value(), 0.5);
+    assert.deepEqual(prevented, ["ArrowUp", "ArrowDown", "ArrowDown"]);
+});

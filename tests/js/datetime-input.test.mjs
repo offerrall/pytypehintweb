@@ -7,7 +7,7 @@ import { compileForm } from "./harness.mjs";
 import { checkPlan } from "../../src/pytypehintweb/static/contract.js";
 import { normalizeNode } from "../../src/pytypehintweb/static/normalize.js";
 import { expandNode } from "./plan-fixture.mjs";
-import { isValidIsoDate } from "../../src/pytypehintweb/static/iso.js";
+import { isValidIsoDate, isValidIsoTime } from "../../src/pytypehintweb/static/iso.js";
 import { DateWidget, TimeWidget } from "../../src/pytypehintweb/static/inputs.js";
 
 
@@ -576,4 +576,31 @@ test("a real date is still judged against its bounds", () => {
     // An impossible date is invalid on its own terms, before any comparison.
     typeInto(widget, "2026-02-31");
     assert.equal(widget.error(), "Enter a valid date");
+});
+
+
+// One implementation of "a canonical time" serves the plan validator and
+// TimeWidget alike, so the two cannot disagree about what HH:MM:SS admits.
+test("isValidIsoTime accepts exactly a canonical HH:MM:SS string", () => {
+    for (const good of ["00:00:00", "09:05:07", "19:59:59", "23:59:59"]) {
+        assert.equal(isValidIsoTime(good), true, good);
+    }
+
+    for (const bad of ["24:00:00", "12:60:00", "12:00:60", "9:00:00", "12:00",
+                       "12:00:00.5", " 12:00:00", "12:00:00\n", "", null,
+                       undefined, 120000, ["12:00:00"]]) {
+        assert.equal(isValidIsoTime(bad), false, String(bad));
+    }
+});
+
+
+test("the validator and TimeWidget refuse the same malformed time", () => {
+    const widget = new TimeWidget();
+
+    for (const bad of ["24:00:00", "12:00", "12:00:60"]) {
+        assert.throws(() => widget.setValue(bad), TypeError, bad);
+        assert.throws(
+            () => normalizeNode(expandNode({ kind: "time", options: { min: bad } })),
+            /expected an ISO time \(HH:MM:SS\) or null/, bad);
+    }
 });

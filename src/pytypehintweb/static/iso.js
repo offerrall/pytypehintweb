@@ -1,5 +1,7 @@
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
+
 
 export function isValidIsoDate(value) {
     if (typeof value !== "string" || !ISO_DATE.test(value)) {
@@ -21,4 +23,9 @@ export function isValidIsoDate(value) {
     return date.getUTCFullYear() === year
         && date.getUTCMonth() === month - 1
         && date.getUTCDate() === day;
+}
+
+
+export function isValidIsoTime(value) {
+    return typeof value === "string" && ISO_TIME.test(value);
 }

@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.4.0 - 2026-11-13
+
+### Added
+
+- Tuples that one item describes get a form, as the `list` node they are on the
+  wire: `tuple[X, ...]`, with the tuple's `Min` / `Max` as its item bounds, and
+  a fixed tuple whose positions all compile to an equal shape, such as
+  `tuple[float, float, float]`, with `minItems` and `maxItems` equal to its
+  size. The value comes back a real `tuple`, so an `@immutable` model that
+  holds a collection works end to end. In a union a tuple collides with a list
+  and with any other tuple and travels `wrapped`. `decode()` hands files inside
+  a tuple to `file_resolver`. The plan contract stays at `v: 1` and the browser
+  runtime needed no change.
+- A tuple whose positions differ (`tuple[int, str]`) and `tuple[()]` are
+  refused with the field's path and the two supported forms. A fixed tuple with
+  no default starts empty, like any list with a minimum.
+
+### Fixed
+
+- Stepping an integer control up at `Number.MAX_SAFE_INTEGER`, or down at the
+  lower end, wrote a number outside the safe range, which the control then read
+  as no value. A step that would leave the range is not taken.
+
+### Changed
+
+- The browser runtime lost the logic it carried twice, with no change of
+  behaviour, messages or public API: a choice and a default are checked by the
+  same limits function in `contract.js`; `iso.js` owns the one ISO time
+  pattern (`isValidIsoTime`) beside the date one; the nullable choices of five
+  node types go through one normalizer; the text, number, date, time and file
+  widgets share their touched state and error display, and the integer and
+  float widgets share their stepper. The guards that existed only for the test
+  DOM are gone. The runtime is about 6,500 bytes smaller.
+
 ## 1.3.0 - 2026-11-13
 
 The core is now `pytypehint == 1.3.0`. `@immutable` models are accepted like any

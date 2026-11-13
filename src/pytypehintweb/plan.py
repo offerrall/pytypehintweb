@@ -5,7 +5,7 @@ from types import FunctionType
 
 from pytypehint import (
     MISSING, Bool, Date, EnumShape, Float, Int, List, NoneShape, Signature,
-    Str, Struct, Time, signature_of, struct_of,
+    Str, Struct, Time, Tuple, signature_of, struct_of,
 )
 
 _PLAN_VERSION = 1
@@ -426,6 +426,11 @@ def _transport_group(shape):
 
     if shape.pytype in (str, date, time):
         return _JSON_STRING
+
+    # A tuple travels as a JSON array, the same as a list, so it joins the list
+    # group: it collides with a list and with any other tuple in the union.
+    if type(shape) is Tuple:
+        return list
 
     return shape.pytype
 
@@ -892,6 +897,86 @@ def _enum_node(shape, config, path: str) -> dict:
     }
 
 
+def _list_node(config, min_items, max_items, item: dict) -> dict:
+    return {
+        "kind": "list",
+        "addLabel": config.list_add_label,
+        "removeLabel": config.list_remove_label,
+        "minItems": min_items,
+        "maxItems": max_items,
+        "minMessage": config.list_min_message,
+        "maxMessage": config.list_max_message,
+        "item": item,
+    }
+
+
+_TUPLE_SUPPORTED = (
+    "tuple[X, ...] and fixed tuples whose positions are all the same are "
+    "supported")
+
+
+def _tuple_slot(shape, path: str):
+    # The one option set every item of the tuple takes, or a refusal. A list
+    # node has a single `item`, so it can stand for a tuple only when all the
+    # tuple's positions are the same.
+    if shape.variadic:
+        return shape.items[0]
+
+    if not shape.items:
+        raise _error(
+            path,
+            f"tuple[()] is not supported: an empty tuple has no control to "
+            f"show; {_TUPLE_SUPPORTED}")
+
+    # "The same" is equality of the compiled option tuples, position against
+    # position: the same options in the same order. Scalar shapes, List and
+    # Tuple are frozen dataclasses compared by value, so two positions are equal
+    # only when type, every constraint and every Extra are; an enum compares by
+    # its class; a Struct compares by identity, and the core compiles one Struct
+    # per dataclass, so two positions of one dataclass are the same object.
+    # Equal positions produce the same node and are validated the same way by
+    # the core. Anything else, down to int | str against str | int, is refused.
+    first = shape.items[0]
+
+    for options in shape.items[1:]:
+        if options != first:
+            raise _error(
+                path,
+                f"{shape.option_id()}: positions that differ in type or "
+                f"constraints are not supported yet; {_TUPLE_SUPPORTED}")
+
+    return first
+
+
+def _tuple_node(shape, config, path: str) -> dict:
+    # A tuple is a JSON array on the wire, so the tuples a single item node can
+    # describe are emitted as the list node they are in the browser. A tuple of
+    # files gets no `multiple` shortcut: that stays list[File], and here each
+    # item is a single-file node like any other composed file.
+    slot = _tuple_slot(shape, path)
+
+    if shape.variadic:
+        min_items = _inclusive_length(shape.min, path, "Tuple.min")
+        max_items = _inclusive_length(shape.max, path, "Tuple.max")
+
+        if (min_items is not None and max_items is not None
+                and min_items > max_items):
+            raise _error(
+                path,
+                "Tuple min and max leave no representable length; the "
+                "converted length bounds form an empty range")
+    else:
+        # The size is the bound. The core only admits a Min / Max on a fixed
+        # tuple when it includes that size, so neither can say anything the
+        # size does not already say, and neither is read.
+        min_items = len(shape.items)
+        max_items = len(shape.items)
+
+    return _list_node(
+        config, min_items, max_items,
+        _options_node(slot, config, f"{path}.item", item=True))
+
+
 def _shape_node(shape, config, path: str) -> dict:
     if type(shape) is Str:
         return _str_node(shape, config, path)
@@ -936,16 +1021,12 @@ def _shape_node(shape, config, path: str) -> dict:
                 "List min and max leave no representable length; the converted "
                 "length bounds form an empty range")
 
-        return {
-            "kind": "list",
-            "addLabel": config.list_add_label,
-            "removeLabel": config.list_remove_label,
-            "minItems": min_items,
-            "maxItems": max_items,
-            "minMessage": config.list_min_message,
-            "maxMessage": config.list_max_message,
-            "item": _options_node(shape.item, config, f"{path}.item", item=True),
-        }
+        return _list_node(
+            config, min_items, max_items,
+            _options_node(shape.item, config, f"{path}.item", item=True))
+
+    if type(shape) is Tuple:
+        return _tuple_node(shape, config, path)
 
     if type(shape) is Struct:
         if not shape.fields:
@@ -1028,6 +1109,20 @@ def _accepts(shape, value) -> bool:
             return False
         return all(_accepted_by_any(shape.item, item) for item in value)
 
+    if type(shape) is Tuple:
+        if type(value) is not tuple:
+            return False
+
+        if shape.variadic:
+            return all(_accepted_by_any(shape.items[0], item)
+                       for item in value)
+
+        if len(value) != len(shape.items):
+            return False
+
+        return all(_accepted_by_any(options, item)
+                   for options, item in zip(shape.items, value))
+
     return type(value) is shape.pytype
 
 
@@ -1065,6 +1160,12 @@ def _plain_value(shape, value, path: str):
 
     if type(shape) is List:
         return [_initial_value(shape.item, item, f"{path}[{index}]")
+                for index, item in enumerate(value)]
+
+    # A tuple default is written as the JSON array it travels as. Only tuples
+    # _tuple_node() accepted get here, so every position takes the first slot.
+    if type(shape) is Tuple:
+        return [_initial_value(shape.items[0], item, f"{path}[{index}]")
                 for index, item in enumerate(value)]
 
     if type(shape) is Int:
@@ -1164,6 +1265,9 @@ def _reject_recursion(shapes, path: str, open_structs: tuple) -> None:
     for shape in shapes:
         if type(shape) is List:
             _reject_recursion(shape.item, f"{path}.item", open_structs)
+        elif type(shape) is Tuple:
+            for options in shape.items:
+                _reject_recursion(options, f"{path}.item", open_structs)
         elif type(shape) is Struct:
             if any(shape is opened for opened in open_structs):
                 raise _error(

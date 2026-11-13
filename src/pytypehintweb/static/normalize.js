@@ -2,7 +2,7 @@ import {
     BRANCH_KEYS, CHOICE_KEYS, FIELD_KEYS, FORM_KEYS, KINDS, LIST_KEYS, MODES,
     OBJECT_KEYS, OPTIONAL_KEYS, PLAN_VERSION, SCALAR_KEYS,
 } from "./defaults.js";
-import { isValidIsoDate } from "./iso.js";
+import { isValidIsoDate, isValidIsoTime } from "./iso.js";
 
 
 export function fail(path, message) {
@@ -143,37 +143,6 @@ function asPositiveFiniteOrNull(value, path) {
 }
 
 
-function stringChoices(value, path) {
-    if (value === null) {
-        return null;
-    }
-
-    asArray(value, path);
-
-    return value.map((choice, i) => asString(choice, `${path}[${i}]`));
-}
-
-
-function floatChoices(value, path) {
-    if (value === null) {
-        return null;
-    }
-
-    asArray(value, path);
-
-    return value.map((choice, i) => {
-        if (typeof choice !== "number" || !Number.isFinite(choice)) {
-            fail(`${path}[${i}]`, "expected a finite number");
-        }
-
-        return choice;
-    });
-}
-
-
-export const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
-
-
 function asIsoDateOrNull(value, path) {
     if (value === null) {
         return value;
@@ -192,7 +161,7 @@ function asIsoTimeOrNull(value, path) {
         return value;
     }
 
-    if (typeof value !== "string" || !ISO_TIME.test(value)) {
+    if (!isValidIsoTime(value)) {
         fail(path, "expected an ISO time (HH:MM:SS) or null");
     }
 
@@ -200,7 +169,7 @@ function asIsoTimeOrNull(value, path) {
 }
 
 
-function dateChoices(value, path) {
+function choicesOrNull(value, path, isValid, expected) {
     if (value === null) {
         return null;
     }
@@ -208,8 +177,8 @@ function dateChoices(value, path) {
     asArray(value, path);
 
     return value.map((choice, i) => {
-        if (!isValidIsoDate(choice)) {
-            fail(`${path}[${i}]`, "expected an ISO date (YYYY-MM-DD)");
+        if (!isValid(choice)) {
+            fail(`${path}[${i}]`, expected);
         }
 
         return choice;
@@ -217,20 +186,35 @@ function dateChoices(value, path) {
 }
 
 
+function stringChoices(value, path) {
+    return choicesOrNull(
+        value, path, (choice) => typeof choice === "string", "expected a string");
+}
+
+
+function intChoices(value, path) {
+    return choicesOrNull(
+        value, path, Number.isSafeInteger, "expected a safe integer");
+}
+
+
+function floatChoices(value, path) {
+    return choicesOrNull(
+        value, path,
+        (choice) => typeof choice === "number" && Number.isFinite(choice),
+        "expected a finite number");
+}
+
+
+function dateChoices(value, path) {
+    return choicesOrNull(
+        value, path, isValidIsoDate, "expected an ISO date (YYYY-MM-DD)");
+}
+
+
 function timeChoices(value, path) {
-    if (value === null) {
-        return null;
-    }
-
-    asArray(value, path);
-
-    return value.map((choice, i) => {
-        if (typeof choice !== "string" || !ISO_TIME.test(choice)) {
-            fail(`${path}[${i}]`, "expected an ISO time (HH:MM:SS)");
-        }
-
-        return choice;
-    });
+    return choicesOrNull(
+        value, path, isValidIsoTime, "expected an ISO time (HH:MM:SS)");
 }
 
 
@@ -263,23 +247,6 @@ function mustBeNull(value, path) {
     }
 
     return value;
-}
-
-
-function intChoices(value, path) {
-    if (value === null) {
-        return null;
-    }
-
-    asArray(value, path);
-
-    return value.map((choice, i) => {
-        if (!Number.isSafeInteger(choice)) {
-            fail(`${path}[${i}]`, "expected a safe integer");
-        }
-
-        return choice;
-    });
 }
 
 

@@ -9,7 +9,8 @@ time.
 
 The scalar types are `str`, `int`, `float`, `date`, `time`, `bool` and `enum`
 (any non-`Flag`, non-empty `Enum`). They compose through lists, nested lists,
-optional values, unions, dataclasses and function signatures.
+tuples (the two forms [below](#tuples)), optional values, unions, dataclasses
+and function signatures.
 
 Any other scalar shape raises:
 
@@ -127,6 +128,27 @@ A form over a recursive structure needs a shape with a bound: a fixed depth
 spelled out as distinct dataclasses, or a flat `list` of nodes carrying a parent
 key. Both are representable and both expand.
 
+## Tuples
+
+A plan has no tuple node: a tuple is emitted as the `list` node it is on the
+wire, and a list node has a single `item`. So the supported tuples are the ones
+one item describes completely — `tuple[X, ...]`, and a fixed tuple whose
+positions all compile to an equal shape, such as `tuple[float, float, float]`
+(see [Tuples](python.md#tuples) for what "equal" means). The rest raise:
+
+```text
+fields.pair: tuple[int, str]: positions that differ in type or constraints are not supported yet; tuple[X, ...] and fixed tuples whose positions are all the same are supported
+fields.nothing: tuple[()] is not supported: an empty tuple has no control to show; tuple[X, ...] and fixed tuples whose positions are all the same are supported
+```
+
+Positions that differ only in a constraint (`tuple[Annotated[int, Min(0)],
+int]`) or in the order of a union (`tuple[int | str, str | int]`) are refused
+too: showing them under one item would apply one position's rules to another.
+
+A supported fixed tuple is a list whose size is a constraint, not a set of
+pre-built controls: without a default it starts empty, and the form is not ready
+until the user has added exactly its rows.
+
 ## Regular expressions
 
 Pattern support is a conservative portable subset: the core validates with
@@ -229,10 +251,11 @@ Replace/Restore cycle and the host's upload loop — is the
 describe. What is *limited* here:
 
 - A file **composes like any other node**, at any depth: inside a list, a
-  dataclass, an optional or a union branch, and inside combinations of those.
-  A bare `list[File]` is the one shape with a dedicated representation — a single
-  `multiple` widget rather than a list of single-file widgets — and that is a
-  shortcut, not a restriction on the others.
+  tuple, a dataclass, an optional or a union branch, and inside combinations of
+  those. A bare `list[File]` is the one shape with a dedicated representation — a
+  single `multiple` widget rather than a list of single-file widgets — and that
+  is a shortcut, not a restriction on the others; `tuple[File, ...]` does not
+  take it and is a list of single-file widgets.
   The only file combinations still refused are the ones listed here as genuinely
   unrepresentable: the `Str` atoms beside `FileHint`, and a union whose branches
   share a transport (see below). The byte-size bounds are not among them — they

@@ -354,7 +354,8 @@ test("a directly constructed ChoiceWidget defaults its mode labels", () => {
 //
 // A disabled control cannot hold focus. When a move disables the button that was
 // just activated (the extremes), focus must land on the still-enabled sibling
-// rather than fall back to the body. The fake DOM has no focus(), so record it.
+// rather than fall back to the body. The fake DOM's focus() does nothing, so
+// record the calls.
 function trackFocus(choice) {
     const focused = [];
     for (const [name, button] of [["previous", choice.previous],

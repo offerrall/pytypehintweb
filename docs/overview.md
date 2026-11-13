@@ -45,9 +45,11 @@ direction only.
   package under `pytypehintweb.STATIC`. The widgets can be built from a plan or
   used directly. See the [JavaScript API](javascript.md).
 - **Types.** `str`, `int`, `float`, `date`, `time`, `bool` and `enum`, composing
-  through lists, optional fields, unions and nested dataclasses, with
-  constraints, static choices, integer sliders, and configurable validation
-  messages and labels. See the [Python API](python.md).
+  through lists, same-typed tuples, optional fields, unions and nested
+  dataclasses, with constraints, static choices, integer sliders, and
+  configurable validation messages and labels. `@immutable` models are
+  dataclasses like any other, and tuples are how they hold a collection. See
+  the [Python API](python.md).
 - **File fields.** Single, optional, `list[File]` and nested inside dataclasses.
   The widget mints an upload reference that the host redeems through its own
   channel, and an existing reference can be planted as a default or through

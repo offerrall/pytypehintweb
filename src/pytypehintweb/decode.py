@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from pytypehint import Field, List, NoneShape, Shape, Signature, Str, Struct
+from pytypehint import Field, List, Shape, Signature, Str, Struct, Tuple
 
 # Reserved keys of the discriminated transport, mirrored from the core. A field
 # can never carry them: field names must be identifiers, and neither is.
@@ -105,10 +105,37 @@ def _resolve(shapes: tuple[Shape, ...], value: Any,
 
         return value
 
+    if type(value) is tuple:
+        tuples = [s for s in shapes if type(s) is Tuple]
+
+        # The core restores an array to a tuple only where the slot is one
+        # unambiguous Tuple; a union of tuples keeps its wrapper and reaches
+        # here through its $value with the branch already named. A tuple goes
+        # back out a tuple, so build() still gets the exact type.
+        if len(tuples) == 1:
+            return tuple(
+                _resolve(_tuple_slot(tuples[0], index), item, resolver)
+                for index, item in enumerate(value))
+
+        return value
+
     if type(value) is dict:
         return _resolve_dict(shapes, value, resolver)
 
     return value
+
+
+def _tuple_slot(shape: Tuple, index: int) -> tuple[Shape, ...]:
+    # The options of one position: the repeated slot of a variadic tuple, the
+    # position's own otherwise. A position past a fixed size has none, so
+    # nothing in it is walked and build() reports the length.
+    if shape.variadic:
+        return shape.items[0]
+
+    if index < len(shape.items):
+        return shape.items[index]
+
+    return ()
 
 
 def _transport_type(shape: Shape) -> type:

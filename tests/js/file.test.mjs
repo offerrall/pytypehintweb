@@ -1119,3 +1119,91 @@ test("an unrestricted field keeps name text out of the reference", () => {
         assert.match(widget.value(), whole, name);
     }
 });
+
+
+// --- drag and drop -----------------------------------------------------------
+//
+// The row is the drop target. Every drag event is cancelled, because a browser
+// that is not told otherwise navigates to a dropped file; the row is marked
+// while something is dragged over it, counting nested enter/leave pairs.
+
+function dragEvent(widget, type, files) {
+    let prevented = false;
+
+    widget.row.dispatch(type, {
+        preventDefault: () => { prevented = true; },
+        dataTransfer: files === undefined
+            ? null
+            : { files: files.map((name) => ({ name })) },
+    });
+
+    return prevented;
+}
+
+
+test("dragging over the row marks it until the drag leaves", () => {
+    const widget = new FileWidget({ multiple: true });
+
+    assert.equal(dragEvent(widget, "dragenter"), true);
+    assert.equal(dragEvent(widget, "dragenter"), true);   // entering a child
+    assert.equal(widget.row.classList.contains("pth-dragging"), true);
+    assert.equal(dragEvent(widget, "dragover"), true);
+
+    assert.equal(dragEvent(widget, "dragleave"), true);
+    assert.equal(widget.row.classList.contains("pth-dragging"), true);
+
+    dragEvent(widget, "dragleave");
+    assert.equal(widget.row.classList.contains("pth-dragging"), false);
+});
+
+
+test("dropped files are appended and the row stops being marked", () => {
+    const widget = new FileWidget({ multiple: true });
+
+    choose(widget, "a.txt");
+    dragEvent(widget, "dragenter");
+
+    assert.equal(dragEvent(widget, "drop", ["b.txt", "c.txt"]), true);
+    assert.equal(widget.row.classList.contains("pth-dragging"), false);
+    assert.deepEqual(widget.files().map((f) => f.name), ["a.txt", "b.txt", "c.txt"]);
+    assert.equal(widget.value().length, 3);
+});
+
+
+test("a drop that carries no files adds nothing", () => {
+    const widget = new FileWidget({ multiple: true });
+
+    choose(widget, "a.txt");
+    dragEvent(widget, "drop");
+
+    assert.deepEqual(widget.files().map((f) => f.name), ["a.txt"]);
+});
+
+
+test("the + button opens a file picker of its own", () => {
+    const widget = new FileWidget({ extensions: [".pdf"], multiple: true });
+    const opened = [];
+    const createElement = document.createElement;
+
+    document.createElement = (tagName) => {
+        const element = createElement(tagName);
+        element.click = () => opened.push(element);
+        return element;
+    };
+
+    try {
+        widget.addBtn.click();
+    } finally {
+        document.createElement = createElement;
+    }
+
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].type, "file");
+    assert.equal(opened[0].multiple, true);
+    assert.equal(opened[0].getAttribute("accept"), ".pdf");
+
+    opened[0].files = [{ name: "picked.pdf" }];
+    opened[0].dispatch("change");
+
+    assert.deepEqual(widget.files().map((f) => f.name), ["picked.pdf"]);
+});

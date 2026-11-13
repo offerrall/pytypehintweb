@@ -581,6 +581,62 @@ List constraints and item constraints are independent: `Min` on the list is
 `list[A] | list[B]` is a different question: the choice covers the whole
 list, so rows cannot mix types.
 
+## Tuples
+
+On the wire a tuple is a JSON array, so the tuples a single item node can
+describe become the same `list` node a list does, and the browser needs no
+tuple of its own. Two forms are supported:
+
+| Hint | Plan node |
+| --- | --- |
+| `tuple[X, ...]` | a `list` node with `X` as its `item`; `Min` / `Max` on the tuple are `minItems` / `maxItems`, converted and checked exactly as a list's |
+| `tuple[X, X, X]` | a `list` node with `X` as its `item` and `minItems == maxItems == 3` |
+
+```python
+Channel = Annotated[float, Min(0.0), Max(1.0)]
+
+
+@dataclass
+class Swatch:
+    color: tuple[Channel, Channel, Channel, Channel]
+    samples: Annotated[tuple[float, ...], Min(1), Max(16)]
+```
+
+A fixed tuple qualifies only when every position **compiles to an equal shape**:
+the same options in the same order, with the same constraints. Shapes are
+compared by value, an enum by its class and a dataclass by being the one
+compiled `Struct`, so `tuple[Channel, Channel]` and `tuple[Point, Point]`
+qualify, while `tuple[Channel, float]` and `tuple[int | str, str | int]` do
+not. The rule is deliberately narrow: equal positions are the one case in which
+a single item node says everything about every position.
+
+Everything else is refused, with the path:
+
+```text
+fields.pair: tuple[int, str]: positions that differ in type or constraints are not supported yet; tuple[X, ...] and fixed tuples whose positions are all the same are supported
+fields.nothing: tuple[()] is not supported: an empty tuple has no control to show; tuple[X, ...] and fixed tuples whose positions are all the same are supported
+```
+
+What follows from being a list node:
+
+- Everything in [Lists](#lists) holds. In particular a fixed tuple with no
+  default starts empty and is not ready until it has its rows; the size is a
+  constraint, and the interface invents no values to satisfy it. A default
+  gives it its rows from the start, after which rows can be neither added nor
+  removed.
+- `Min` / `Max` on a **fixed** tuple are not read. The core refuses bounds that
+  exclude the fixed size, so the ones it admits cannot say anything the size
+  does not.
+- A default tuple is written as an array, items converted as any item is.
+- In a union a tuple collides with a list and with any other tuple — all are
+  arrays — and those branches travel `wrapped` (see
+  [Unions and the wrapper](#unions-and-the-wrapper)).
+- A tuple of files is a list of single-file nodes. The `multiple` shortcut
+  stays exactly `list[File]`.
+- The value comes back a real `tuple`: `schema.decode()` restores the array, so
+  `schema.build()` receives the exact type. This is what makes `@immutable`
+  models, which hold their collections in tuples, work end to end.
+
 ## Optional values
 
 A union containing `None` makes the field optional. Disabling the toggle
@@ -642,6 +698,7 @@ Five states that are easy to confuse:
 | `""` | an explicit string; the field is not empty |
 | `0` | an explicit integer; the field is not empty |
 | `[]` | an explicit empty list; no rows are created |
+| `()` | an explicit empty tuple; written as `[]`, no rows are created |
 
 For a union, the plan records which branch the default selected:
 `{"branch": index, "value": ...}`. When the value fits more than one branch,
@@ -784,7 +841,14 @@ Two wrappers are **not** consumed, and both refusals are load-bearing.
 **A wrapper the core genuinely needs is kept.** `list[str] | list[int]` has
 branches of one runtime type, so the discriminator is still what routes them
 when `build()` runs; the wrapper stands and only what is inside `$value` is
-restored.
+restored. `tuple[int, ...] | tuple[str, ...]` is the same case, and its `$value`
+comes back a tuple.
+
+A list and a tuple in one union sit in between. Both are JSON arrays, so they
+collide on the wire and travel `wrapped` — `{"$type": "tuple[int, ...]",
+"$value": [1, 2]}` — but Python tells a `tuple` from a `list` by itself, so the
+core consumes the wrapper and leaves the exact container. A bare array in such
+a union names neither and stays a list.
 
 **A wrapper whose payload never read as the branch it names is kept too.** In
 `str | date`, `{"$type": "date", "$value": "not-a-date"}` names the `date`
@@ -807,7 +871,8 @@ the `$type` fixes which shape, and the value's content is never consulted.
 
 For the file pass it adds, `decode()` reaches into the core through its public
 surface only (`Signature.params`, `Struct.fields`, `Field.shape`, `List.item`,
-`Str.file_hint`, `Struct.cls`, `option_id()`): it never touches the core
+`Tuple.items`, `Tuple.variadic`, `Str.file_hint`, `Struct.cls`, `option_id()`):
+it never touches the core
 internals, and it names no shape whose portable spelling the core restores —
 importing `Float`, `Date`, `Time` or `EnumShape` here would mean something in
 this layer had started deciding what such a value means.
@@ -842,7 +907,9 @@ the whole contract.
 The resolver **is** the pass this layer adds, and it runs over the tree the core
 has already decoded, so it reaches every position a file node can occupy — a
 root field, a `list[File]` (once per reference, in order), a struct field, a list
-item, or the selected branch of a union in any of the three transport modes;
+item, a tuple position, or the selected branch of a union in any of the three
+transport modes; a tuple goes back out a tuple and a list a list, so `build()`
+still receives the exact container;
 where the core kept a wrapper, the pass descends into its `$value` by the same
 option id the core matched. What decides the call is the **shape** — a `Str`
 carrying `FileHint`, and unambiguously so — never what the string looks like,
