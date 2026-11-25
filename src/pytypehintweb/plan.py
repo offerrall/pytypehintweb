@@ -1234,12 +1234,23 @@ def _enabled(field) -> bool:
     return field.default is not None
 
 
+def _titled(name: str) -> str:
+    """A field name as a label: underscores as spaces, the first letter upper.
+
+    The same rule FuncToWeb applies to a function's title, so ``contact_person``
+    reads "Contact person". Only the plan's label: the name stays as it is.
+    """
+    text = " ".join(name.replace("_", " ").split())
+
+    return text[:1].upper() + text[1:] if text else name
+
+
 def _field_node(field, config, path: str) -> dict:
     optional = any(type(s) is NoneShape for s in field.shape)
     has_default = field.default is not MISSING
     where = f"{path}.{field.name}"
 
-    label = field.label.value if field.label else field.name
+    label = field.label.value if field.label else _titled(field.name)
     description = field.description.value if field.description else None
     enabled = _enabled(field) if optional else True
 

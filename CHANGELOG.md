@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 - 2026-11-25
+
+### Changed
+
+- A field with no `Label` gets its name as words in the plan's `label`:
+  underscores become spaces and the first letter is upper case, so
+  `contact_person` reads "Contact person" and a parameter `shop` reads "Shop".
+  It is the rule FuncToWeb applies to a function's title, and the one form
+  labels followed before 2.0 dropped it with `pytypeinputweb`. A `Label` is kept
+  letter for letter, `name` is unchanged, and a name of only underscores keeps
+  its name as its label.
+
 ## 1.4.0 - 2026-11-13
 
 ### Added

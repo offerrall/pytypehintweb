@@ -325,7 +325,7 @@ Required: `name`, `label`, `description`, `optional`, `enabled`, `hasDefault`,
 ```json
 {
   "name": "username",
-  "label": "username",
+  "label": "Username",
   "description": null,
   "optional": false,
   "enabled": true,
@@ -353,7 +353,7 @@ An optional field that starts disabled with an explicit `None` default:
 ```json
 {
   "name": "nickname",
-  "label": "nickname",
+  "label": "Nickname",
   "description": null,
   "optional": true,
   "enabled": false,
@@ -378,8 +378,11 @@ An optional field that starts disabled with an explicit `None` default:
 ```
 
 `optional` means the union contains `None`. `enabled` is the resolved initial
-state of the toggle. `label` defaults to `name` only in the producer that emits
-the plan; in the plan itself it is always present.
+state of the toggle. Without a `Label`, the producer that emits the plan writes
+the `name` as words: underscores become spaces and the first letter is upper
+case, so `contact_person` reads "Contact person". A `Label` is kept letter for
+letter, and `name` itself is never changed. In the plan itself `label` is always
+present.
 
 Field invariants:
 
@@ -996,7 +999,7 @@ Required: `kind`, `fields`. Each field carries the full field shape.
   "fields": [
     {
       "name": "street",
-      "label": "street",
+      "label": "Street",
       "description": null,
       "optional": false,
       "enabled": true,
@@ -1019,7 +1022,7 @@ Required: `kind`, `fields`. Each field carries the full field shape.
     },
     {
       "name": "city",
-      "label": "city",
+      "label": "City",
       "description": null,
       "optional": false,
       "enabled": true,

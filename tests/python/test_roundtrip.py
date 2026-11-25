@@ -63,7 +63,7 @@ def test_the_expanded_plan_carries_every_property_explicitly(node, tmp_path):
 
     # There is one representation now: every known property is present, so the
     # browser never has to reconstruct an absence.
-    assert name_field["label"] == "name"
+    assert name_field["label"] == "Name"
     assert "options" in plan["fields"][1]["node"]
     assert plan["v"] == 1
     assert isinstance(result["read"]["age"], int)
